@@ -1,5 +1,13 @@
 # WellAI Bot AI Agent
 
+## Clone the repository
+
+You can clone the repository using the following command. Make sure to include the `--recurse-submodules` flag to clone the submodules as well.
+
+```sh
+git clone --recurse-submodules <repository-url>
+```
+
 ## Install dependencies
 
 You need to use uv to install dependencies and run the server.
