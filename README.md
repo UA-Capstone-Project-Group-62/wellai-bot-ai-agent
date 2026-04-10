@@ -19,5 +19,5 @@ Copy the `.env.example` file to `.env` and set the `PORT` variable if needed (de
 To start the gRPC server, run the following command:
 
 ```sh
-uv run python main.py
+uv run main.py
 ```
