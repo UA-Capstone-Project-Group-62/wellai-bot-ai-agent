@@ -15,7 +15,7 @@ PORT = os.getenv("PORT", "50051")
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
     def Receive(self, request, context):
         print(f"Received message from {request.user_id}: {request.content}")
-        return common_pb2.Response(success=True, message="Agent received message")
+        return common_pb2.Response(success=True, message="Agent received")
 
 
 def main():
