@@ -1,9 +1,15 @@
+import os
 from concurrent import futures
 
 import grpc
+from dotenv import load_dotenv
 from grpc_reflection.v1alpha import reflection
 from proto.agent import agent_pb2, agent_pb2_grpc
 from proto.common import common_pb2
+
+# Initialize environment variables
+load_dotenv()
+PORT = os.getenv("PORT", "50051")
 
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
@@ -25,9 +31,9 @@ def main():
     reflection.enable_server_reflection(SERVICE_NAMES, server)
 
     # Start the server
-    server.add_insecure_port("[::]:50051")
+    server.add_insecure_port(f"[::]:{PORT}")
     server.start()
-    print("gRPC server listening on port 50051")
+    print(f"gRPC server listening on port {PORT}")
     server.wait_for_termination()
 
 
