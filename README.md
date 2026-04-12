@@ -1,4 +1,4 @@
-# WellAI Bot AI Agent
+# WellAI Bot AI Agent this is just for testing and demonstration
 
 ## Clone the repository
 
