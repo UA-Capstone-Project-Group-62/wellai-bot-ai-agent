@@ -22,7 +22,7 @@ uv sync
 
 ## Start the server
 
-Copy the `.env.example` file to `.env` and set the `PORT` variable if needed (default is 50051).
+Copy the `.env.example` file to `.env` and set the required environment variables.
 
 To start the gRPC server, run the following command:
 
