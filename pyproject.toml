@@ -8,6 +8,7 @@ dependencies = [
     "grpcio>=1.80.0",
     "grpcio-reflection>=1.80.0",
     "grpcio-tools>=1.80.0",
+    "loguru>=0.7.3",
     "proto",
     "python-dotenv>=1.2.2",
 ]
