@@ -13,7 +13,7 @@ class BotClient:
     def target_addr(self) -> str:
         return self._target_addr
 
-    def forward_message(self, user_id: str, content: str):
+    def send(self, user_id: str, content: str):
         logger.info(
             "Forwarding message to bot service. destination={}, user_id={}",
             self._target_addr,
