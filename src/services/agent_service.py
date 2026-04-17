@@ -18,7 +18,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         )
 
         try:
-            bot_response = self.bot_client.forward_message(
+            bot_response = self.bot_client.send(
                 user_id=request.user_id,
                 content=request.content,
             )
