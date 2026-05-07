@@ -29,3 +29,12 @@ To start the gRPC server, run the following command:
 ```sh
 uv run main.py
 ```
+
+## run docker file (added by eliza)
+.env file includes groq api key as an environment variable 
+
+build the docker env:
+docker build --no-cache -t wellai-bot .
+
+run the command:
+docker run --env-file .env --rm -p 50051:50051 wellai-bot
