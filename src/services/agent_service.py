@@ -49,11 +49,11 @@ def intent_classifier(state: AgentState):
         The intent is "cancel_app" if the user wants to cancel a booking, cancel an appointment, or
         other similar requests.
 
-        The intent is "reschedule_app" if the user says they want to change the time of an appointment they already have,
+        The intent is "reschedule_app" if the user wants to change the time of an appointment they already have,
         change the date of their booking, or change the medical professional they are seeing. 
 
         The intent is "ask_question" if the user is asking for more information about the clinic, booking process,
-        or similar topics. This DOES NOT include questions about topics that are unrelated to the medical clinic,
+        or similar topics. This DOES NOT INCLUDE questions about topics that are unrelated to the medical clinic,
         you (the booking assistant), or the medical professionals they are able to book appointments with.
 
         The intent is "unrelated_to_your_job" if the user has a request that is anything else.
@@ -72,7 +72,8 @@ def intent_classifier(state: AgentState):
     return {"intent": intent}
 
 def agent_node(state: AgentState):
-    # reroutes according to updated user intent 
+    # currently deprecated
+    # only used when the intent-classifier finds "unrelated_to_your_job" in the router below
 
     intent = state["intent"]
     messages = state["messages"]
@@ -82,6 +83,8 @@ def agent_node(state: AgentState):
     return {"messages": [response]}
 
 def book_node(state: AgentState):
+    # needs external integration with the calendar
+
     messages = state["messages"]
     prompt = """
         The user wants to book an appointment with a clinic. 
@@ -99,7 +102,6 @@ def cancel_node(state: AgentState):
 
     return {"messages": [response]}
 
-
 def reschedule_node(state: AgentState):
     messages = state["messages"]
     prompt = """
@@ -110,6 +112,8 @@ def reschedule_node(state: AgentState):
     return {"messages": [response]}
 
 def question_node(state: AgentState):
+    # needs access to a knowledge base
+
     messages = state["messages"]
     prompt = """
         The user wants to ask a question about the clinic. 
