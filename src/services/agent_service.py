@@ -20,27 +20,42 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             len(request.content),
         )
 
+        user_message = request.content.lower()
+
+        # Intent recognition
+        if any(word in user_message for word in ["book", "appointment", "jadual", "temu janji", "nak jumpa", "buat tempahan"]):
+            intent = "booking"
+        elif any(word in user_message for word in ["cancel", "batal", "cancelkan"]):
+            intent = "cancel"
+        elif any(word in user_message for word in ["reschedule", "ubah", "pindah"]):
+            intent = "reschedule"
+        elif any(word in user_message for word in ["faq", "soalan", "tanya", "question", "jam", "bila", "buka", "hour", "location", "where"]):
+            intent = "faq"
+        else:
+            intent = "unknown"
+
+        logger.info(f"Detected intent: {intent}")
+
         try:
-            bot_response = self.bot_client.send(
-                user_id=request.user_id,
-                content=request.content,
-            )
-        except grpc.RpcError as error:
-            logger.error(
-                "Failed to send message to bot service. destination={}, code={}, details={}",
-                self.bot_client.target_addr,
-                error.code(),
-                error.details(),
-            )
-            context.set_code(error.code())
-            context.set_details(
-                f"Failed to send message to bot service: {error.details()}"
-            )
-            return common_pb2.Response(
-                success=False, message="Failed to forward message to bot service"
-            )
+            if intent == "faq":
+                faq_answer = get_faq_answer(request.content)
+                if faq_answer:
+                    ai_reply = faq_answer
+                else:
+                    # fallback to LLM
+                    result = graph.invoke({"messages": [HumanMessage(content=request.content)]})
+                    ai_reply = result["messages"][-1].content.strip()
+            else:
+                # normal LLM flow
+                result = graph.invoke({"messages": [HumanMessage(content=request.content)]})
+                ai_reply = result["messages"][-1].content.strip()
+
+            logger.info("AI replied successfully")
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            ai_reply = "Sorry, I'm having trouble right now. Please try again."
 
         return common_pb2.Response(
-            success=bot_response.success,
-            message=bot_response.message,
+            success=True,
+            message=ai_reply
         )
