@@ -22,14 +22,14 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
 
         user_message = request.content.lower()
 
-        # Intent recognition
+        # TODO: make intent recognition better later
         if any(word in user_message for word in ["book", "appointment", "jadual", "temu janji", "nak jumpa", "buat tempahan"]):
             intent = "booking"
         elif any(word in user_message for word in ["cancel", "batal", "cancelkan"]):
             intent = "cancel"
         elif any(word in user_message for word in ["reschedule", "ubah", "pindah"]):
             intent = "reschedule"
-        elif any(word in user_message for word in ["faq", "soalan", "tanya", "question", "jam", "bila", "buka", "hour", "location", "where"]):
+        elif any(word in user_message for word in ["faq", "soalan", "tanya", "question", "jam", "bila", "buka", "hour", "location", "where", "open", "time"]):
             intent = "faq"
         else:
             intent = "unknown"
@@ -38,17 +38,20 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
 
         try:
             if intent == "faq":
+                from src.services.faq_knowledge_base import get_faq_answer   # import here for now
                 faq_answer = get_faq_answer(request.content)
+               
                 if faq_answer:
                     ai_reply = faq_answer
                 else:
-                    # fallback to LLM
-                    result = graph.invoke({"messages": [HumanMessage(content=request.content)]})
-                    ai_reply = result["messages"][-1].content.strip()
+                    ai_reply = "Sorry, I don't have that information right now. Would you like to book an appointment or speak to a human?"
             else:
-                # normal LLM flow
-                result = graph.invoke({"messages": [HumanMessage(content=request.content)]})
-                ai_reply = result["messages"][-1].content.strip()
+                # normal flow for now
+                bot_response = self.bot_client.send(
+                    user_id=request.user_id,
+                    content=request.content,
+                )
+                ai_reply = bot_response.message
 
             logger.info("AI replied successfully")
         except Exception as e:
