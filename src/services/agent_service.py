@@ -5,6 +5,9 @@ from proto.common import common_pb2
 
 from src.clients.bot_client import BotClient
 
+# Step 1: Import from our new FAQ file
+from src.services.faq_knowledge_base import get_system_prompt_with_faq
+
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
     def __init__(self, bot_client: BotClient):
