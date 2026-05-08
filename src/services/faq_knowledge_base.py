@@ -1,6 +1,9 @@
 # src/services/faq_knowledge_base.py
 # Quick and dirty FAQ stuff for now - will improve after Wai Kok replies
 
+# Note: Currently using a common knowledge base.
+# TODO: Make this clinic-specific once client gives us per-clinic FAQs
+
 # ALL OF THIS BTW IS JUST TEMPLATES BC THE CLIENT REFUSES TO ACTUALLY READ MY EMAILS TO GIVE ME REAL INFO
 
 FAQ_KNOWLEDGE_BASE = {
@@ -51,3 +54,10 @@ You can speak English, Malay, and Mandarin. Be polite and professional. Never gi
 
 You have some basic FAQ knowledge. Use it if the user asks about opening hours, location, appointment length, documents, payment, cancellation, telemedicine, insurance, etc.
 If you don't know the answer, just say you don't know and offer to book an appointment or talk to a human."""
+
+
+
+def set_clinic_faqs(clinic_name: str):
+    """Placeholder for future clinic-specific FAQs"""
+    print(f"TODO: Load FAQ for clinic: {clinic_name}")
+    # Will be expanded when client replies
