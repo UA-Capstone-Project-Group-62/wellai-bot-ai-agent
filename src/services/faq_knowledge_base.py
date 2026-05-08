@@ -1,12 +1,10 @@
 # src/services/faq_knowledge_base.py
 # Quick and dirty FAQ stuff for now - will improve after Wai Kok replies
 
-FAQ_KNOWLEDGE_BASE = {
-    # src/services/faq_knowledge_base.py
-# Quick and dirty FAQ stuff for now - will improve after Wai Kok replies
+# ALL OF THIS BTW IS JUST TEMPLATES BC THE CLIENT REFUSES TO ACTUALLY READ MY EMAILS TO GIVE ME REAL INFO
 
 FAQ_KNOWLEDGE_BASE = {
-    # General Clinic Info ALL OF THIS BTW IS JUST TEMPLATES BC THE CLIENT REFUSES TO ACTUALLY READ MY EMAILS TO GIVE ME REAL INFO
+    # General Clinic Info
     "opening_hours": "Our clinics are usually open Mon-Fri 9AM-6PM, Sat 9AM-1PM. Closed Sunday & public holidays.",
     
     "location": "We have a few clinics around Malaysia. Which one are you looking for? (Damansara, KL, Penang etc)",
@@ -30,8 +28,10 @@ FAQ_KNOWLEDGE_BASE = {
     "doctor_list": "We have many specialists. Please tell me what kind of doctor you need (e.g. general, dermatologist, etc).",
     "child": "Yes, we see children. Please mention the child's age when booking.",
     "emergency": "For emergencies please go to the nearest hospital. We are not an emergency clinic.",
+    
+    # TODO: add more when we get info from client
 }
-}
+
 
 def get_faq_answer(query):
     """rough keyword search"""
