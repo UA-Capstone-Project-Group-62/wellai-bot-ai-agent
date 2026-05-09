@@ -21,5 +21,14 @@ class BotClient:
         )
         return self._stub.Send(bot_pb2.Message(user_id=user_id, content=content))
 
+    def get_messages(self, user_id: str, count: int):
+        logger.info(
+            "Getting messages from bot service. destination={}, user_id={}, count={}",
+            self._target_addr,
+            user_id,
+            count,
+        )
+        return self._stub.GetMessages(bot_pb2.GetMessagesRequest(user_id=user_id, count=count))
+
     def close(self) -> None:
         self._channel.close()

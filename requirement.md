@@ -1,0 +1,1 @@
+I want to implement intent recognition with llm in my recieve endpoint, and want to have intent recognition from the faq and from the latest ten messages 
