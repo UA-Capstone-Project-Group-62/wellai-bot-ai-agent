@@ -1,9 +1,0 @@
-services:
-  mock-agent-python:
-    build:
-      context: .
-      dockerfile: mocks/Dockerfile.mock
-    container_name: mock-agent-python
-    env_file: .env
-    ports:
-      - "50053:50053"
