@@ -3,6 +3,12 @@ import sys
 import os
 
 proto_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "proto", "gen", "py")
+if not os.path.isdir(proto_path):
+    raise SystemExit(
+        "Missing generated protobuf Python stubs. Expected directory: "
+        f"{proto_path}. Generate the files under 'proto/gen/py' before "
+        "running this client."
+    )
 sys.path.insert(0, proto_path)
 
 from proto.agent import agent_pb2, agent_pb2_grpc
