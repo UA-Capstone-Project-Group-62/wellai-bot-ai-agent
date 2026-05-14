@@ -1,38 +1,28 @@
 # src/services/faq_knowledge_base.py
-# Quick and dirty FAQ stuff for now - will improve after Wai Kok replies
 
 # Note: Currently using a common knowledge base.
 # TODO: Make this clinic-specific once client gives us per-clinic FAQs
 
-# ALL OF THIS BTW IS JUST TEMPLATES BC THE CLIENT REFUSES TO ACTUALLY READ MY EMAILS TO GIVE ME REAL INFO
-
 FAQ_KNOWLEDGE_BASE = {
-    # General Clinic Info
-    "opening_hours": "Our clinics are usually open Mon-Fri 9AM-6PM, Sat 9AM-1PM. Closed Sunday & public holidays.",
-    
-    "location": "We have a few clinics around Malaysia. Which one are you looking for? (Damansara, KL, Penang etc)",
-    
-    "appointment_duration": "Normal appointment is about 15-30 minutes.",
-    
-    # New Patients & Documents
-    "new_patient": "New patients are welcome! Just tell me which clinic and we can help book your first appointment.",
-    "bring_documents": "Please bring your IC/passport and any previous medical records if you have them.",
-    
-    # Payment & Insurance
-    "payment": "We accept cash, card, and most major insurance. Please check with the clinic for details.",
-    "insurance": "We work with many insurance providers. Please tell me your insurance company and I can help check.",
-    
-    # Booking & Cancellation
-    "cancellation": "You can cancel or reschedule up to 24 hours before your appointment without charge.",
-    "telemedicine": "Yes, some doctors offer online/video consultations. Would you like me to check availability?",
-    
-    # Other Common Questions
-    "wait_time": "Wait times vary but we try to keep them as short as possible. Would you like me to book an appointment for you?",
-    "doctor_list": "We have many specialists. Please tell me what kind of doctor you need (e.g. general, dermatologist, etc).",
-    "child": "Yes, we see children. Please mention the child's age when booking.",
-    "emergency": "For emergencies please go to the nearest hospital. We are not an emergency clinic.",
-    
-    # TODO: add more when we get info from client
+    "report_info": "You can make an online consultation appointment with our health consultation team in order to receive further analysis on your health report.",
+
+    "make_appointment": "You can make appointment using the online appointment option with us here. You can select or inform us your preferred appointment date and time. One day before the appointment, our consultant will provide you the link for the consultation.",
+
+    "consultation_cost": "The cost of consultation is free.",
+
+    "consultation_hours": "The hours are by appointment only. Customers can indicate their availability or preferred appointment time, and the consultant can contact them for appointment.",
+
+    "consultation_method": "Virtually.",
+
+    "consultation_location": "All consultations are performed virtually.",
+
+    "consultation_platform": "Google Meet or Zoom.",
+
+    "consultation_duration": "Each consultation session is one hour. Should there be further questions from the customer, the consultation session may be extended for another thirty minutes.",
+
+    "reschedule_cancel": "Yes. You can do that with us here.",
+
+    "data_security": "Yes, your data is completely secure. We use the high-level protection to ensure your information stays private. We will never share your personal information with any third party except our own health consultant team.",
 }
 
 
@@ -52,7 +42,7 @@ def get_system_prompt_with_faq():
     return """You are a helpful WhatsApp booking assistant for WellAI clinics in Malaysia.
 You can speak English, Malay, and Mandarin. Be polite and professional. Never give medical advice.
 
-You have some basic FAQ knowledge. Use it if the user asks about opening hours, location, appointment length, documents, payment, cancellation, telemedicine, insurance, etc.
+You have some basic FAQ knowledge. Use it if the user asks about reports, appointments, consultation cost, hours, location, platforms (Google Meet, Zoom), session duration, rescheduling, cancellation, or data security.
 If you don't know the answer, just say you don't know and offer to book an appointment or talk to a human."""
 
 
