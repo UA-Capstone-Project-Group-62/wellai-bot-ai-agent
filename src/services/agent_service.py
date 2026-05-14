@@ -1,4 +1,5 @@
 from loguru import logger
+import grpc
 from langchain_core.messages import HumanMessage
 from proto.agent import agent_pb2_grpc
 from proto.common import common_pb2
@@ -21,8 +22,16 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             for msg in response.messages:
                 lines.append(f"- {msg.content}")
             return "\n".join(lines)
+        except grpc.RpcError as error:
+            logger.warning(
+                "Failed to fetch history from bot service. destination={}, code={}, details={}",
+                self.bot_client.target_addr,
+                error.code(),
+                error.details(),
+            )
+            return ""
         except Exception as e:
-            logger.warning("Failed to fetch history from bot service: {}", e)
+            logger.warning("Unexpected error fetching history: {}", e)
             return ""
 
     def Receive(self, request, context):
@@ -37,6 +46,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
 
         history_text = self._fetch_history(user_id)
 
+        # --- Step 1: Generate AI reply via LangGraph ---
         try:
             result = intent_graph.invoke({
                 "messages": [HumanMessage(content=content)],
@@ -46,9 +56,12 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             logger.info("AI replied successfully")
         except Exception as e:
             logger.error("LangGraph error: {}", e)
-            ai_reply = "Sorry, I'm having trouble right now. Please try again."
+            return common_pb2.Response(
+                success=False,
+                message="Sorry, I'm having trouble right now. Please try again.",
+            )
 
-        # Forward the AI reply back to the user via the BotService
+        # --- Step 2: Forward the AI reply back to the user via BotService ---
         try:
             send_response = self.bot_client.send(user_id, ai_reply)
             if not send_response.success:
@@ -57,7 +70,32 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
                     user_id,
                     send_response.message,
                 )
+                # Propagate the BotService failure back to the caller
+                return common_pb2.Response(
+                    success=False,
+                    message=f"BotService rejected the message: {send_response.message}",
+                )
+        except grpc.RpcError as error:
+            logger.error(
+                "Failed to send reply to bot service. destination={}, code={}, details={}",
+                self.bot_client.target_addr,
+                error.code(),
+                error.details(),
+            )
+            context.set_code(error.code())
+            context.set_details(
+                f"Failed to send reply to bot service: {error.details()}"
+            )
+            return common_pb2.Response(
+                success=False,
+                message="Failed to deliver reply to user",
+            )
         except Exception as e:
-            logger.error("Failed to send reply via BotService: {}", e)
+            logger.error("Unexpected error sending reply: {}", e)
+            return common_pb2.Response(
+                success=False,
+                message="Failed to deliver reply to user",
+            )
 
+        # --- Success path ---
         return common_pb2.Response(success=True, message=ai_reply)
