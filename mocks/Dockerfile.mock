@@ -1,12 +1,26 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1.7
+FROM python:3.14-slim
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY proto/gen/py /app/proto
-COPY mocks/mock_agent_server.py .
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    PYTHONUNBUFFERED=1
 
-RUN pip install grpcio protobuf
+# Copy metadata first to maximize build cache reuse.
+COPY pyproject.toml uv.lock ./
+COPY proto/pyproject.toml proto/pyproject.toml
 
-ENV PYTHONPATH=/app/proto
+# Copy project files.
+COPY src ./src
+COPY proto ./proto
+COPY mocks ./mocks
+COPY main.py ./
 
-CMD ["python", "mock_agent_server.py"]
+RUN uv sync --no-dev
+
+EXPOSE 50053
+
+CMD ["uv", "run", "python", "mocks/mock_agent_server.py"]

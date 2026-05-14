@@ -208,10 +208,18 @@ workflow.add_conditional_edges(
     "intent",
     route,
     {
-        "agent": "agent"
+        "book": "book",
+        "cancel": "cancel",
+        "reschedule": "reschedule",
+        "question": "question",
+        "agent": "agent",
     }
 )
 
+workflow.add_edge("book", END)
+workflow.add_edge("cancel", END)
+workflow.add_edge("reschedule", END)
+workflow.add_edge("question", END)
 workflow.add_edge("agent", END)
 
 graph = workflow.compile()
