@@ -4,7 +4,7 @@ from proto.agent import agent_pb2_grpc
 from proto.common import common_pb2
 
 from src.clients.bot_client import BotClient
-from src.services.intent_graph import graph
+from src.services.intent_graph import graph as intent_graph
 
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
@@ -38,7 +38,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         history_text = self._fetch_history(user_id)
 
         try:
-            result = graph.invoke({
+            result = intent_graph.invoke({
                 "messages": [HumanMessage(content=content)],
                 "history": history_text,
             })
