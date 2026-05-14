@@ -6,12 +6,14 @@ from proto.common import common_pb2
 from src.clients.bot_client import BotClient
 
 from src.services.intent_recognition import IntentRecognitionService
+from src.services.faq_handler import FAQHandler
 
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
     def __init__(self, bot_client: BotClient):
         self.bot_client = bot_client
         self.intent_service = IntentRecognitionService()
+        self.faq_handler = FAQHandler()
 
     def Receive(self, request, context):
         logger.info(
@@ -33,11 +35,18 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             )
             logger.info(f"User {request.user_id} - Intent: {intent}")
 
-            bot_response = self.bot_client.send(
-                user_id=request.user_id,
-                content=request.content,
-            )
-            ai_reply = bot_response.message
+            if intent == "faq":
+                answer = self.faq_handler.get_answer(request.content)
+                if answer:
+                    ai_reply = self.faq_handler.format_response(answer)
+                else:
+                    ai_reply = "I'm not sure I have an answer for that. Would you like to speak with a consultant? I can help you book an appointment."
+            else:
+                bot_response = self.bot_client.send(
+                    user_id=request.user_id,
+                    content=request.content,
+                )
+                ai_reply = bot_response.message
 
             logger.info("AI replied successfully")
         except Exception as e:
