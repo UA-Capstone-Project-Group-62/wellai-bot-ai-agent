@@ -28,5 +28,5 @@ def call_receive(addr: str):
 
 
 if __name__ == '__main__':
-    addr = sys.argv[1] if len(sys.argv) > 1 else "localhost:50053"
+    addr = sys.argv[1] if len(sys.argv) > 1 else "localhost:50051"
     call_receive(addr)

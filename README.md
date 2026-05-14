@@ -30,9 +30,35 @@ To start the gRPC server, run the following command:
 uv run main.py
 ```
 
+## Architecture
+
+The AI Agent is a gRPC service that receives user messages from the **BotService**, generates AI responses using LangGraph + Groq, and sends replies back through the BotService.
+
+```
+WhatsApp User
+     |
+     v
+BotService (stores messages, delivers replies)
+     |
+     |  GetMessages -> history
+     |  Receive(user_message)
+     |  <- AI response
+     |  Send(ai_reply)
+     v
+AI Agent (this service)
+```
+
+- `AgentService.Receive` — receives a user message from the BotService
+- `BotService.GetMessages` — fetches conversation history before generating a response
+- `BotService.Send` — forwards the AI reply back to the user
+
+The BotService address is configured via `BOT_SERVICE_ADDR` in `.env`.
+
 ## Sending messages to the server
 
 The server exposes an `AgentService` gRPC service on port `50051`. You can talk to it with the included interactive client, the test client, or any gRPC client.
+
+> **Note:** For the full integration (conversation history + reply delivery), a BotService must be running on `BOT_SERVICE_ADDR` (default: `localhost:50052`).
 
 ### Interactive chat
 
@@ -115,72 +141,3 @@ docker run --env-file .env --rm -p 50051:50051 wellai-bot
 ```
 
 The server listens on port `50051` by default.
-
-## Testing with Mock Servers
-
-A mock gRPC agent server is available in the `mocks/` directory. It runs the **real AI agent logic** from `src/services/agent_service.py` so you can see actual LLM-generated responses without connecting to the full backend stack.
-
-> **Requires:** Your `.env` file must include a valid `GROQ_API_KEY` because the mock server calls the Groq API to generate responses.
-
-### 1. Build the mock server image
-
-```sh
-docker build -f mocks/Dockerfile.mock -t mock-agent .
-```
-
-### 2. Run the mock server
-
-Keep this running in a terminal so you can watch the logs. Make sure you pass your `.env` file so the container can access `GROQ_API_KEY`:
-
-```sh
-docker run --rm -p 50053:50053 --env-file .env mock-agent
-```
-
-Or use Docker Compose (it automatically picks up `.env`):
-
-```sh
-docker compose -f docker-compose.mock.yaml up --build
-```
-
-The mock server will be available on port `50053`.
-
-> **Port already allocated?** If you see `Bind for 0.0.0.0:50053 failed: port is already allocated`, stop the old container first:
->
-> ```sh
-> docker ps -q --filter publish=50053 | xargs -r docker stop
-> ```
->
-> Or, if no container is found, kill whatever process is holding the port:
->
-> ```sh
-> lsof -ti:50053 | xargs kill -9 2>/dev/null
-> ```
->
-> Then re-run the command above.
-
-### 3. Send test requests and see responses
-
-In a **second terminal**, run the test client:
-
-```sh
-uv run mocks/test_client.py localhost:50053
-```
-
-**What you will see:**
-
-- **First terminal** (server): logs showing received messages, detected intents, and Groq API calls:
-  ```
-  INFO:__main__:AI Agent Mock Server running on port 50053
-  INFO     | src.services.agent_service:Receive:32 - Received message from user. user_id=user123, content_length=36
-  INFO     | src.services.intent_graph:intent_classifier:79 - Detected intent: 'book_app'
-  INFO     | src.services.agent_service:Receive:46 - AI replied successfully
-  ```
-
-- **Second terminal** (client): the actual AI-generated responses from the agent:
-  ```
-  Response: success=True, message=Hello, thank you for reaching out to us. We'd be happy to book an appointment for you...
-
-  Response: success=True, message=I see you're interested in morning time slots. We have several available...
-
-  Response: success=True, message=Noted, you'd like to book for next week. Let me check our availability...
-  ```
