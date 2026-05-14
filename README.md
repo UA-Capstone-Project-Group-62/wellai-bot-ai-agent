@@ -66,7 +66,7 @@ uv run mocks/interactive_client.py localhost:50051 eliza
 To send the built-in test messages (great for quick integration checks):
 
 ```sh
-uv run mocks/test_streaming_client.py localhost:50051
+uv run mocks/test_client.py localhost:50051
 ```
 
 ### grpcurl (no Python needed)
@@ -83,11 +83,11 @@ Then describe a method:
 grpcurl -plaintext localhost:50051 describe wellai_bot.agent.AgentService
 ```
 
-Call `ReceiveAndRespond` with a single message:
+Call `Receive` with a single message:
 
 ```sh
 grpcurl -plaintext -d '{"user_id": "user123", "content": "Hello"}' \
-  localhost:50051 wellai_bot.agent.AgentService/ReceiveAndRespond
+  localhost:50051 wellai_bot.agent.AgentService/Receive
 ```
 
 ## Docker
@@ -160,10 +160,10 @@ The mock server will be available on port `50053`.
 
 ### 3. Send test requests and see responses
 
-In a **second terminal**, run the test streaming client:
+In a **second terminal**, run the test client:
 
 ```sh
-uv run mocks/test_streaming_client.py localhost:50053
+uv run mocks/test_client.py localhost:50053
 ```
 
 **What you will see:**
@@ -171,16 +171,16 @@ uv run mocks/test_streaming_client.py localhost:50053
 - **First terminal** (server): logs showing received messages, detected intents, and Groq API calls:
   ```
   INFO:__main__:AI Agent Mock Server running on port 50053
-  INFO     | src.services.agent_service:Receive:245 - Received message from user. user_id=user123, content_length=36
-  INFO     | src.services.agent_service:intent_classifier:78 - Detected intent: 'book_app'
-  INFO     | src.services.agent_service:Receive:267 - AI replied successfully
+  INFO     | src.services.agent_service:Receive:32 - Received message from user. user_id=user123, content_length=36
+  INFO     | src.services.intent_graph:intent_classifier:79 - Detected intent: 'book_app'
+  INFO     | src.services.agent_service:Receive:46 - AI replied successfully
   ```
 
 - **Second terminal** (client): the actual AI-generated responses from the agent:
   ```
-  Response: success=True, message=Hello, thank you for reaching out to us. We'd be happy to book an appointment for you. Morning time slots are a great choice...
+  Response: success=True, message=Hello, thank you for reaching out to us. We'd be happy to book an appointment for you...
 
-  Response received: success=True, message=Hello again, it's nice to continue our booking process. I've taken note that you'd like to book an appointment...
-  Response received: success=True, message=You've already mentioned your preference for morning time slots...
-  Response received: success=True, message=You've mentioned you're looking to book an appointment for next week...
+  Response: success=True, message=I see you're interested in morning time slots. We have several available...
+
+  Response: success=True, message=Noted, you'd like to book for next week. Let me check our availability...
   ```
