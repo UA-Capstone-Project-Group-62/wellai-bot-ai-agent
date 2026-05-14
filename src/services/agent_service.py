@@ -98,4 +98,5 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             )
 
         # --- Success path ---
-        return common_pb2.Response(success=True, message=ai_reply)
+        # Reply has been sent to the user via BotService.Send; return ack.
+        return common_pb2.Response(success=True, message="")

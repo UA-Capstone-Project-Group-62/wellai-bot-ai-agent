@@ -23,7 +23,10 @@ def chat(addr: str, user_id: str):
 
             msg = agent_pb2.Message(user_id=user_id, content=text)
             response = stub.Receive(msg)
-            print(f"Bot: {response.message}\n")
+            if response.success:
+                print("(Message forwarded to BotService for delivery)\n")
+            else:
+                print(f"Error: {response.message}\n")
     except KeyboardInterrupt:
         pass
     finally:

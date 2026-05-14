@@ -22,7 +22,8 @@ def call_receive(addr: str):
 
     for msg in messages:
         response = stub.Receive(msg)
-        print(f"Response: success={response.success}, message={response.message}")
+        status = "OK" if response.success else f"ERROR: {response.message}"
+        print(f"Response: success={response.success} ({status})")
 
     channel.close()
 
