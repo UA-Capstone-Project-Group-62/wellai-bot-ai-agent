@@ -21,12 +21,9 @@ def chat(addr: str, user_id: str):
             if not text or text.lower() in ("quit", "exit"):
                 break
 
-            def generate():
-                yield agent_pb2.Message(user_id=user_id, content=text)
-
-            responses = stub.ReceiveAndRespond(generate())
-            for response in responses:
-                print(f"Bot: {response.message}\n")
+            msg = agent_pb2.Message(user_id=user_id, content=text)
+            response = stub.Receive(msg)
+            print(f"Bot: {response.message}\n")
     except KeyboardInterrupt:
         pass
     finally:
