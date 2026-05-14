@@ -51,6 +51,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             result = intent_graph.invoke({
                 "messages": [HumanMessage(content=content)],
                 "history": history_text,
+                "intent": "unrelated_to_your_job",
             })
             ai_reply = result["messages"][-1].content.strip()
             logger.info("AI replied successfully")
