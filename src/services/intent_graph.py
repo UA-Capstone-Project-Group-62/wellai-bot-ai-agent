@@ -69,9 +69,33 @@ Return ONLY the intent label."""
         SystemMessage(content=system_content),
         HumanMessage(content=f"Message: {user_message}"),
     ])
-    intent = response.content.strip()
-    logger.info("Detected intent: {}", intent)
+    raw_intent = response.content.strip()
+    intent = _parse_intent(raw_intent)
+    logger.info("Detected intent: {} (raw: {})", intent, raw_intent)
     return {"intent": intent}
+
+
+def _parse_intent(raw: str) -> str:
+    """Extract and validate an intent label from LLM output.
+
+    Handles surrounding quotes, extra punctuation, trailing explanations, etc.
+    Falls back to 'unrelated_to_your_job' only when no known intent is found.
+    """
+    cleaned = raw.strip().strip('"').strip("'").lower()
+
+    # If the cleaned string exactly matches a known intent, return it.
+    for valid in POSSIBLE_INTENTS:
+        if cleaned == valid.lower():
+            return valid
+
+    # Otherwise try substring matching — the model sometimes answers with a
+    # full sentence that still contains the label.
+    for valid in POSSIBLE_INTENTS:
+        if valid.lower() in cleaned:
+            return valid
+
+    # No known intent found — default to the catch-all so routing still works.
+    return "unrelated_to_your_job"
 
 
 def agent_node(state: AgentState):
