@@ -199,6 +199,11 @@ def question_node(state: AgentState):
     messages = state["messages"]
     user_message = messages[-1].content
 
+    language_keywords = ["language", "languages", "bahasa", "语言", "malay", "english", "mandarin", "chinese", "tahu", "faham", "support"]
+    if any(kw in user_message.lower() for kw in language_keywords):
+        logger.info("Language question detected: {}", user_message)
+        return {"messages": [AIMessage(content="Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages: English, Malay (Bahasa Melayu), and Mandarin.")]}
+
     faq_handler = FAQHandler()
     faq_answer = faq_handler.get_answer(user_message)
 

@@ -53,16 +53,19 @@ def run_tests(addr: str, bot_addr: str):
         ("English", "Can I reschedule my appointment?"),
         ("English", "Where is your clinic located?"),
         ("English", "How much is the consultation fee?"),
+        ("English", "What languages do you know?"),
         ("Malay", "Saya nak buat temu janji"),
         ("Malay", "Apakah waktu operasi anda?"),
         ("Malay", "Boleh saya tukar tarikh temu janji?"),
         ("Malay", "Di mana klinik anda?"),
         ("Malay", "Berapa yuran konsultasi?"),
+        ("Malay", "Apakah bahasa yang anda faham?"),
         ("Mandarin", "我想预约看诊"),
         ("Mandarin", "你们的营业时间是什么时候？"),
         ("Mandarin", "我可以改预约吗？"),
         ("Mandarin", "你们的诊所在哪里？"),
         ("Mandarin", "看诊费用是多少？"),
+        ("Mandarin", "你们支持什么语言？"),
     ]
 
     counter = 0
