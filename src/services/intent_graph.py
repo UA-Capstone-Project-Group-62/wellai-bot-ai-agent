@@ -2,9 +2,12 @@ from typing import TypedDict, Annotated
 import operator
 
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from langchain_groq import ChatGroq
 from loguru import logger
+
+from src.services.faq_handler import FAQHandler
+from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 
 
 # LangChain Groq wrapper
@@ -184,12 +187,23 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
 
 def question_node(state: AgentState):
     messages = state["messages"]
-    conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
+
+    faq_handler = FAQHandler()
+    faq_answer = faq_handler.get_answer(user_message)
+
+    if faq_answer:
+        logger.info("FAQ match found for question: {}", user_message)
+        return {"messages": [AIMessage(content=faq_answer)]}
+
+    conversation = state.get("history", "") or format_conversation(messages)
 
     system_content = f"""{SYSTEM_PROMPT}
 
 You are answering the user's question about the clinic. Consider the conversation history for context.
+
+Available FAQ information:
+{_format_faq_context()}
 
 Conversation history:
 {conversation}
@@ -201,6 +215,13 @@ Provide a helpful and informative response about the clinic."""
         HumanMessage(content=user_message),
     ])
     return {"messages": [response]}
+
+
+def _format_faq_context() -> str:
+    faq_lines = []
+    for key, value in FAQ_KNOWLEDGE_BASE.items():
+        faq_lines.append(f"- {key}: {value}")
+    return "\n".join(faq_lines)
 
 
 def _route(state: AgentState):
