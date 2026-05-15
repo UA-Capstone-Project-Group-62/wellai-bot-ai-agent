@@ -24,30 +24,3 @@ FAQ_KNOWLEDGE_BASE = {
 
     "data_security": "Yes, your data is completely secure. We use the high-level protection to ensure your information stays private. We will never share your personal information with any third party except our own health consultant team.",
 }
-
-
-def get_faq_answer(query):
-    """rough keyword search"""
-    q = query.lower()
-    
-    for key, answer in FAQ_KNOWLEDGE_BASE.items():
-        if any(word in q for word in key.replace("_", " ").split()):
-            return answer
-            
-    return None
-
-
-def get_system_prompt_with_faq():
-    """adds faq instructions to the prompt"""
-    return """You are a helpful WhatsApp booking assistant for WellAI clinics in Malaysia.
-You can speak English, Malay, and Mandarin. Be polite and professional. Never give medical advice.
-
-You have some basic FAQ knowledge. Use it if the user asks about reports, appointments, consultation cost, hours, location, platforms (Google Meet, Zoom), session duration, rescheduling, cancellation, or data security.
-If you don't know the answer, just say you don't know and offer to book an appointment or talk to a human."""
-
-
-
-def set_clinic_faqs(clinic_name: str):
-    """Placeholder for future clinic-specific FAQs"""
-    print(f"TODO: Load FAQ for clinic: {clinic_name}")
-    # Will be expanded when client replies
