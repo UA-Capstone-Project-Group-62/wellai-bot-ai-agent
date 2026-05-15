@@ -1,4 +1,4 @@
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, NotRequired
 import operator
 
 from langgraph.graph import StateGraph, END
@@ -34,8 +34,8 @@ POSSIBLE_INTENTS = [
 
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], operator.add]
-    intent: str
-    history: str
+    intent: NotRequired[str]
+    history: NotRequired[str]
 
 
 def format_conversation(messages: list[BaseMessage]) -> str:

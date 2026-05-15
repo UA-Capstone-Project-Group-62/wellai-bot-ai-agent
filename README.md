@@ -62,7 +62,7 @@ The server exposes an `AgentService` gRPC service on port `50051`. You can talk 
 
 ### Interactive chat
 
-An interactive client is included so you can type messages and see AI replies in real time:
+An interactive client is included so you can type messages and see acknowledgments when they are processed:
 
 ```sh
 uv run mocks/interactive_client.py localhost:50051
@@ -72,10 +72,10 @@ Then just type your message and press Enter:
 
 ```
 > Hello, I want to book an appointment
-Bot: Hello! I'd be happy to help you book an appointment...
+(Message forwarded to BotService for delivery)
 
 > I prefer morning slots
-Bot: Great, we have several morning slots available...
+(Message forwarded to BotService for delivery)
 
 > quit
 Goodbye!
