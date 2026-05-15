@@ -2,6 +2,7 @@ from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 
 
 class FAQHandler:
+    """Handles FAQ queries with keyword-based matching against knowledge base."""
     def __init__(self):
         self.knowledge_base = FAQ_KNOWLEDGE_BASE
 
