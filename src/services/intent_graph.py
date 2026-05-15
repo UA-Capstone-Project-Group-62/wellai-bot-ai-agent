@@ -54,19 +54,29 @@ def intent_classifier(state: AgentState):
 
     system_content = f"""{SYSTEM_PROMPT}
 
-Please classify the user message into one of these intents: {POSSIBLE_INTENTS}
+Please classify the user message into one of these intents ONLY: {POSSIBLE_INTENTS}
 
-The intent is "book_app" if the user wants to make a booking, make a new appointment, or other similar requests.
+IMPORTANT RULES:
+- "book_app" = User explicitly wants to CREATE/MAKE a new appointment (e.g., "I want to book", "I need an appointment", "Saya nak buat temu janji", "我想预约")
+- "cancel_app" = User wants to CANCEL an existing appointment
+- "reschedule_app" = User wants to CHANGE an existing appointment time/date
+- "ask_question" = User is asking for INFORMATION about the clinic, hours, location, fees, services, etc. (e.g., "What are your hours?", "Where is your clinic?", "How much?", "Berapa yuran", "营业时间")
+- "unrelated_to_your_job" = Everything else
 
-The intent is "cancel_app" if the user wants to cancel a booking, cancel an appointment, or other similar requests.
+EXAMPLES:
+- "Hello, I want to book an appointment" -> book_app
+- "What are your working hours?" -> ask_question
+- "Where is your clinic located?" -> ask_question
+- "How much is the consultation fee?" -> ask_question
+- "Can I reschedule my appointment?" -> reschedule_app
+- "I want to cancel my booking" -> cancel_app
+- "Saya nak buat temu janji" -> book_app
+- "Apakah waktu operasi anda?" -> ask_question
+- "Berapa yuran konsultasi?" -> ask_question
+- "我可以改预约吗?" -> reschedule_app
+- "我想预约看诊" -> book_app
 
-The intent is "reschedule_app" if the user wants to change the time of an appointment they already have, change the date of their booking, or change the medical professional they are seeing.
-
-The intent is "ask_question" if the user is asking for more information about the clinic, booking process, or similar topics. This DOES NOT INCLUDE questions about topics that are unrelated to the medical clinic, you (the booking assistant), or the medical professionals they are able to book appointments with.
-
-The intent is "unrelated_to_your_job" if the user has a request that is anything else.
-
-Return ONLY the intent label."""
+Return ONLY the intent label, nothing else."""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
