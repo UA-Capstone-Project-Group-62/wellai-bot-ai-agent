@@ -271,7 +271,8 @@ def _format_faq_context() -> str:
     faq_lines = []
     for key, value in FAQ_KNOWLEDGE_BASE.items():
         faq_lines.append(f"- {key}: {value}")
-    return "\n".join(faq_lines)
+    result = "\n".join(faq_lines)
+    return f"FAQ Information (available in English, Malay, and Mandarin — select the language matching the user's query):\n{result}"
 
 
 def _route(state: AgentState):
