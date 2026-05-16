@@ -1,10 +1,13 @@
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, NotRequired
 import operator
 
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from langchain_groq import ChatGroq
 from loguru import logger
+
+from src.services.faq_handler import FAQHandler
+from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 
 
 # LangChain Groq wrapper
@@ -51,19 +54,29 @@ def intent_classifier(state: AgentState):
 
     system_content = f"""{SYSTEM_PROMPT}
 
-Please classify the user message into one of these intents: {POSSIBLE_INTENTS}
+Please classify the user message into one of these intents ONLY: {POSSIBLE_INTENTS}
 
-The intent is "book_app" if the user wants to make a booking, make a new appointment, or other similar requests.
+IMPORTANT RULES:
+- "book_app" = User explicitly wants to CREATE/MAKE a new appointment (e.g., "I want to book", "I need an appointment", "Saya nak buat temu janji", "我想预约")
+- "cancel_app" = User wants to CANCEL an existing appointment
+- "reschedule_app" = User wants to CHANGE an existing appointment time/date
+- "ask_question" = User is asking for INFORMATION about the clinic, hours, location, fees, services, etc. (e.g., "What are your hours?", "Where is your clinic?", "How much?", "Berapa yuran", "营业时间")
+- "unrelated_to_your_job" = Everything else
 
-The intent is "cancel_app" if the user wants to cancel a booking, cancel an appointment, or other similar requests.
+EXAMPLES:
+- "Hello, I want to book an appointment" -> book_app
+- "What are your working hours?" -> ask_question
+- "Where is your clinic located?" -> ask_question
+- "How much is the consultation fee?" -> ask_question
+- "Can I reschedule my appointment?" -> reschedule_app
+- "I want to cancel my booking" -> cancel_app
+- "Saya nak buat temu janji" -> book_app
+- "Apakah waktu operasi anda?" -> ask_question
+- "Berapa yuran konsultasi?" -> ask_question
+- "我可以改预约吗?" -> reschedule_app
+- "我想预约看诊" -> book_app
 
-The intent is "reschedule_app" if the user wants to change the time of an appointment they already have, change the date of their booking, or change the medical professional they are seeing.
-
-The intent is "ask_question" if the user is asking for more information about the clinic, booking process, or similar topics. This DOES NOT INCLUDE questions about topics that are unrelated to the medical clinic, you (the booking assistant), or the medical professionals they are able to book appointments with.
-
-The intent is "unrelated_to_your_job" if the user has a request that is anything else.
-
-Return ONLY the intent label."""
+Return ONLY the intent label, nothing else."""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
@@ -184,12 +197,28 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
 
 def question_node(state: AgentState):
     messages = state["messages"]
-    conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
+
+    language_keywords = ["language", "languages", "bahasa", "语言", "malay", "english", "mandarin", "chinese", "tahu", "faham", "support"]
+    if any(kw in user_message.lower() for kw in language_keywords):
+        logger.info("Language question detected: {}", user_message)
+        return {"messages": [AIMessage(content="Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages: English, Malay (Bahasa Melayu), and Mandarin.")]}
+
+    faq_handler = FAQHandler()
+    faq_answer = faq_handler.get_answer(user_message)
+
+    if faq_answer:
+        logger.info("FAQ match found for question: {}", user_message)
+        return {"messages": [AIMessage(content=faq_answer)]}
+
+    conversation = state.get("history", "") or format_conversation(messages)
 
     system_content = f"""{SYSTEM_PROMPT}
 
 You are answering the user's question about the clinic. Consider the conversation history for context.
+
+Available FAQ information:
+{_format_faq_context()}
 
 Conversation history:
 {conversation}
@@ -201,6 +230,13 @@ Provide a helpful and informative response about the clinic."""
         HumanMessage(content=user_message),
     ])
     return {"messages": [response]}
+
+
+def _format_faq_context() -> str:
+    faq_lines = []
+    for key, value in FAQ_KNOWLEDGE_BASE.items():
+        faq_lines.append(f"- {key}: {value}")
+    return "\n".join(faq_lines)
 
 
 def _route(state: AgentState):
