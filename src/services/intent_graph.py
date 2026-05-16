@@ -20,8 +20,6 @@ SYSTEM_PROMPT = """
 YOUR JOB DESCRIPTION: You are a professional and polite booking assistant for health clinics.
 You are happy to help users with booking, cancelling, and rescheduling appointments.
 You can also answer questions about the clinic, but you will never give medical advice or answers not related to your job.
-
-IMPORTANT: Always respond in the SAME LANGUAGE the user is using (English, Malay/Bahasa Melayu, or Mandarin/中文). If the user writes in Malay, reply in Malay. If the user writes in Mandarin, reply in Mandarin.
 """
 
 POSSIBLE_INTENTS = [
@@ -48,6 +46,21 @@ def format_conversation(messages: list[BaseMessage]) -> str:
         role = "User" if isinstance(msg, HumanMessage) else "Assistant"
         formatted.append(f"{role}: {msg.content}")
     return "\n".join(formatted)
+
+
+def _language_instruction(user_message: str) -> str:
+    """Return a strict language-matching instruction based on the user's message."""
+    msg = user_message.strip()
+    # Mandarin detection: CJK characters
+    if any("\u4e00" <= ch <= "\u9fff" for ch in msg):
+        return "LANGUAGE RULE: The user wrote in Mandarin Chinese (中文). You MUST reply in Mandarin Chinese ONLY. Do not use English or Malay."
+    # Malay detection: common Malay words / Latin script with Malay character
+    malay_markers = ["saya", "awak", "kamu", "anda", "nak", "mahu", "boleh", "tak", "tidak", "berapa", "di mana", "apa", "yang", "untuk", "dengan", "dari", "ini", "itu", "kami", "kita", "mereka", "sini", "sana", "bila", "mana", "macam", "temu janji", "konsultasi", "yuran", "waktu", "operasi", "klinik", "bahasa"]
+    lower_msg = msg.lower()
+    if any(m in lower_msg for m in malay_markers):
+        return "LANGUAGE RULE: The user wrote in Malay (Bahasa Melayu). You MUST reply in Malay ONLY. Do not use English or Mandarin."
+    # Default to English
+    return "LANGUAGE RULE: The user wrote in English. You MUST reply in English ONLY. Do not use Malay or Mandarin."
 
 
 def intent_classifier(state: AgentState):
@@ -123,7 +136,9 @@ def agent_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    system_content = f"""{SYSTEM_PROMPT}
+    system_content = f"""{_language_instruction(user_message)}
+
+{SYSTEM_PROMPT}
 
 Continue the conversation naturally, addressing the user's latest message while considering the conversation history.
 
@@ -144,7 +159,9 @@ def book_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    system_content = f"""{SYSTEM_PROMPT}
+    system_content = f"""{_language_instruction(user_message)}
+
+{SYSTEM_PROMPT}
 
 You are helping the user book an appointment. Consider the conversation history to understand what information has already been provided.
 
@@ -165,7 +182,9 @@ def cancel_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    system_content = f"""{SYSTEM_PROMPT}
+    system_content = f"""{_language_instruction(user_message)}
+
+{SYSTEM_PROMPT}
 
 You are helping the user cancel an appointment. Consider the conversation history to understand what information has already been provided.
 
@@ -186,7 +205,9 @@ def reschedule_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    system_content = f"""{SYSTEM_PROMPT}
+    system_content = f"""{_language_instruction(user_message)}
+
+{SYSTEM_PROMPT}
 
 You are helping the user reschedule an appointment. Consider the conversation history to understand what information has already been provided.
 
@@ -218,7 +239,9 @@ def question_node(state: AgentState):
 
     conversation = state.get("history", "") or format_conversation(messages)
 
-    system_content = f"""{SYSTEM_PROMPT}
+    system_content = f"""{_language_instruction(user_message)}
+
+{SYSTEM_PROMPT}
 
 You are answering the user's question about the clinic. Consider the conversation history for context.
 
