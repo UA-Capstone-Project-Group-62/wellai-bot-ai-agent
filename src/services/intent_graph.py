@@ -239,9 +239,7 @@ def question_node(state: AgentState):
 
     conversation = state.get("history", "") or format_conversation(messages)
 
-    system_content = f"""{_language_instruction(user_message)}
-
-{SYSTEM_PROMPT}
+    system_content = f"""{SYSTEM_PROMPT}
 
 You are answering the user's question about the clinic. Consider the conversation history for context.
 
@@ -251,7 +249,11 @@ Available FAQ information:
 Conversation history:
 {conversation}
 
-Provide a helpful and informative response about the clinic."""
+Provide a helpful and informative response about the clinic.
+
+{_language_instruction(user_message)}
+
+REMEMBER: Start your response directly in the correct language. Do NOT use any other language."""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
