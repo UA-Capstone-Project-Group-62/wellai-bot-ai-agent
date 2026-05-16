@@ -136,11 +136,11 @@ def agent_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
 
     system_content = f"""{SYSTEM_PROMPT}
 
-Continue the conversation naturally, addressing the user's latest message while considering the conversation history.
+Continue the conversation naturally, addressing the user's latest message.
 
 {history_section}
 
@@ -160,11 +160,11 @@ def book_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
 
     system_content = f"""{SYSTEM_PROMPT}
 
-You are helping the user book an appointment. Consider the conversation history to understand what information has already been provided.
+You are helping the user book an appointment.
 
 {history_section}
 
@@ -184,11 +184,11 @@ def cancel_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
 
     system_content = f"""{SYSTEM_PROMPT}
 
-You are helping the user cancel an appointment. Consider the conversation history to understand what information has already been provided.
+You are helping the user cancel an appointment.
 
 {history_section}
 
@@ -208,11 +208,11 @@ def reschedule_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
 
     system_content = f"""{SYSTEM_PROMPT}
 
-You are helping the user reschedule an appointment. Consider the conversation history to understand what information has already been provided.
+You are helping the user reschedule an appointment.
 
 {history_section}
 
@@ -243,7 +243,7 @@ def question_node(state: AgentState):
 
     conversation = state.get("history", "") or format_conversation(messages)
 
-    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
 
     faq_context = _format_faq_context()
 
