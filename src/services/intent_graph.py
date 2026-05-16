@@ -1,18 +1,37 @@
+import time
 from typing import TypedDict, Annotated
 import operator
 
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from langchain_groq import ChatGroq
 from loguru import logger
+
+from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 
 
 # LangChain Groq wrapper
 llm = ChatGroq(
-    model="llama-3.1-8b-instant",
-    temperature=0.7,
+    model="llama-3.3-70b-versatile",
+    temperature=0.1,
     max_tokens=300
 )
+
+
+def _invoke_with_retry(messages, max_retries=5, base_delay=2):
+    """Invoke LLM with exponential backoff retry for rate limits."""
+    for attempt in range(max_retries):
+        try:
+            return llm.invoke(messages)
+        except Exception as e:
+            error_str = str(e)
+            if "rate_limit" in error_str.lower() or "429" in error_str:
+                delay = base_delay * (2 ** attempt)
+                logger.warning("Rate limited, retrying in {}s (attempt {}/{})", delay, attempt + 1, max_retries)
+                time.sleep(delay)
+            else:
+                raise
+    raise Exception(f"LLM rate limit exceeded after {max_retries} retries")
 
 SYSTEM_PROMPT = """
 YOUR JOB DESCRIPTION: You are a professional and polite booking assistant for health clinics.
@@ -37,7 +56,7 @@ class AgentState(TypedDict):
 
 def format_conversation(messages: list[BaseMessage]) -> str:
     if len(messages) <= 1:
-        return "No previous messages."
+        return ""
 
     formatted = []
     for msg in messages[:-1]:
@@ -46,26 +65,58 @@ def format_conversation(messages: list[BaseMessage]) -> str:
     return "\n".join(formatted)
 
 
+def _language_instruction(user_message: str) -> str:
+    """Return a strict language-matching instruction based on the user's message."""
+    msg = user_message.strip()
+    # Mandarin detection: CJK characters
+    if any("\u4e00" <= ch <= "\u9fff" for ch in msg):
+        return "CRITICAL: The user's message is in Mandarin Chinese. You MUST reply in Mandarin Chinese ONLY. Do NOT use any English or Malay words, phrases, or sentences in your response. Every word must be in Mandarin Chinese."
+    # Malay detection: common Malay words / Latin script with Malay character
+    malay_markers = ["saya", "awak", "kamu", "anda", "nak", "mahu", "boleh", "tak", "tidak", "berapa", "di mana", "apa", "yang", "untuk", "dengan", "dari", "ini", "itu", "kami", "kita", "mereka", "sini", "sana", "bila", "mana", "macam", "temu janji", "konsultasi", "yuran", "waktu", "operasi", "klinik", "bahasa"]
+    lower_msg = msg.lower()
+    import re
+    if any(re.search(rf'\b{re.escape(m)}\b', lower_msg) for m in malay_markers):
+        return "CRITICAL: The user's message is in Malay (Bahasa Melayu). You MUST reply in Malay ONLY. Do NOT use any English or Mandarin words, phrases, or sentences in your response. Every word must be in Malay."
+    # Default to English — frame as identity/capability, not a rule
+    return "CRITICAL: The user's message is in English. You MUST reply in English ONLY. Do NOT use any Malay or Mandarin words, phrases, or sentences in your response. Every word must be in English."
+
+
 def intent_classifier(state: AgentState):
     user_message = state["messages"][-1].content
 
     system_content = f"""{SYSTEM_PROMPT}
 
-Please classify the user message into one of these intents: {POSSIBLE_INTENTS}
+Please classify the user message into one of these intents ONLY: {POSSIBLE_INTENTS}
 
-The intent is "book_app" if the user wants to make a booking, make a new appointment, or other similar requests.
+IMPORTANT RULES:
+- Classify based on the USER'S INTENT/ACTION, not the language they use.
+- "book_app" = User explicitly wants to CREATE/MAKE a new appointment (e.g., "I want to book", "I need an appointment", "Saya nak buat temu janji", "我想预约", "Saya mahu temujanji")
+- "cancel_app" = User wants to CANCEL an existing appointment (e.g., "I want to cancel", "Batal temu janji", "取消预约")
+- "reschedule_app" = User wants to CHANGE/MOVE an existing appointment time/date (e.g., "Can I reschedule", "Boleh saya tukar tarikh temu janji", "我可以改预约吗", "tukar jadual", "ubah masa")
+- "ask_question" = User is asking for INFORMATION about the clinic, hours, location, fees, services, etc. (e.g., "What are your hours?", "Where is your clinic?", "How much?", "Berapa yuran", "营业时间", "Di mana klinik", "berapa harga")
+- "unrelated_to_your_job" = Everything else
 
-The intent is "cancel_app" if the user wants to cancel a booking, cancel an appointment, or other similar requests.
+EXAMPLES:
+- "Hello, I want to book an appointment" -> book_app
+- "What are your working hours?" -> ask_question
+- "Where is your clinic located?" -> ask_question
+- "How much is the consultation fee?" -> ask_question
+- "Can I reschedule my appointment?" -> reschedule_app
+- "I want to cancel my booking" -> cancel_app
+- "Saya nak buat temu janji" -> book_app
+- "Apakah waktu operasi anda?" -> ask_question
+- "Berapa yuran konsultasi?" -> ask_question
+- "Boleh saya tukar tarikh temu janji?" -> reschedule_app
+- "Saya mahu batal temu janji" -> cancel_app
+- "我可以改预约吗?" -> reschedule_app
+- "我想预约看诊" -> book_app
+- "你们诊所在哪里？" -> ask_question
+- "看诊费用是多少？" -> ask_question
+- "Berapa harga konsultasi?" -> ask_question
 
-The intent is "reschedule_app" if the user wants to change the time of an appointment they already have, change the date of their booking, or change the medical professional they are seeing.
+Return ONLY the intent label, nothing else."""
 
-The intent is "ask_question" if the user is asking for more information about the clinic, booking process, or similar topics. This DOES NOT INCLUDE questions about topics that are unrelated to the medical clinic, you (the booking assistant), or the medical professionals they are able to book appointments with.
-
-The intent is "unrelated_to_your_job" if the user has a request that is anything else.
-
-Return ONLY the intent label."""
-
-    response = llm.invoke([
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=f"Message: {user_message}"),
     ])
@@ -103,16 +154,19 @@ def agent_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
+
     system_content = f"""{SYSTEM_PROMPT}
 
-Continue the conversation naturally, addressing the user's latest message while considering the conversation history.
+Continue the conversation naturally, addressing the user's latest message.
 
-Conversation history:
-{conversation}
+{history_section}
 
-Provide a helpful response that continues the conversation naturally."""
+Provide a helpful response that continues the conversation naturally.
 
-    response = llm.invoke([
+{_language_instruction(user_message)}"""
+
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -124,16 +178,19 @@ def book_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
+
     system_content = f"""{SYSTEM_PROMPT}
 
-You are helping the user book an appointment. Consider the conversation history to understand what information has already been provided.
+You are helping the user book an appointment.
 
-Conversation history:
-{conversation}
+{history_section}
 
-Respond as a helpful booking assistant. If the user has already provided information (like preferred time or date), acknowledge it and ask for any missing details. Do not ask for information they have already given."""
+Respond as a helpful booking assistant. If the user has already provided information (like preferred time or date), acknowledge it and ask for any missing details. Do not ask for information they have already given.
 
-    response = llm.invoke([
+{_language_instruction(user_message)}"""
+
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -145,16 +202,19 @@ def cancel_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
+
     system_content = f"""{SYSTEM_PROMPT}
 
-You are helping the user cancel an appointment. Consider the conversation history to understand what information has already been provided.
+You are helping the user cancel an appointment.
 
-Conversation history:
-{conversation}
+{history_section}
 
-Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the cancellation."""
+Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the cancellation.
 
-    response = llm.invoke([
+{_language_instruction(user_message)}"""
+
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -166,16 +226,19 @@ def reschedule_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
+
     system_content = f"""{SYSTEM_PROMPT}
 
-You are helping the user reschedule an appointment. Consider the conversation history to understand what information has already been provided.
+You are helping the user reschedule an appointment.
 
-Conversation history:
-{conversation}
+{history_section}
 
-Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the rescheduling."""
+Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the rescheduling.
 
-    response = llm.invoke([
+{_language_instruction(user_message)}"""
+
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -184,23 +247,55 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
 
 def question_node(state: AgentState):
     messages = state["messages"]
-    conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
+
+    language_keywords = [
+        "what language", "what languages", "languages do you", "do you support",
+        "language support", "can speak", "can communicate",
+        "bahasa apa", "apa bahasa", "bahasa yang", "tahu bahasa",
+        "什么语言", "支持什么语言", "会说", "会说中文"
+    ]
+    if any(kw in user_message.lower() for kw in language_keywords):
+        logger.info("Language question detected: {}", user_message)
+        return {"messages": [AIMessage(content="Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages:\n\n🇬🇧 English / 英文: We can communicate in English.\n🇲🇾 Bahasa Melayu / 马来文: Kami boleh berkomunikasi dalam Bahasa Melayu.\n🇨🇳 Mandarin Chinese / 中文 普通话: 我们可以用普通话交流。")]}
+
+    conversation = state.get("history", "") or format_conversation(messages)
+
+    history_section = f"There is no previous conversation history." if not conversation else f"Conversation history:\n{conversation}"
+
+    faq_context = _format_faq_context()
+
+    lang_instr = _language_instruction(user_message)
 
     system_content = f"""{SYSTEM_PROMPT}
 
-You are answering the user's question about the clinic. Consider the conversation history for context.
+You are answering the user's question about the clinic. Use the FAQ information below to provide accurate answers.
 
-Conversation history:
-{conversation}
+Available FAQ information:
+{faq_context}
 
-Provide a helpful and informative response about the clinic."""
+{history_section}
 
-    response = llm.invoke([
+Provide a helpful and informative response about the clinic.
+
+Example Q&A (follow the language of the question):
+- "Where is your clinic located?" -> Answer in the same language as the question, referencing virtual consultations from the FAQ.
+
+{lang_instr}"""
+
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
     return {"messages": [response]}
+
+
+def _format_faq_context() -> str:
+    faq_lines = []
+    for key, value in FAQ_KNOWLEDGE_BASE.items():
+        faq_lines.append(f"- {key}: {value}")
+    return "\n".join(faq_lines)
+
 
 
 def _route(state: AgentState):
