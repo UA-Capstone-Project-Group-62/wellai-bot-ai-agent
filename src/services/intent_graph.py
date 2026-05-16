@@ -136,12 +136,13 @@ def agent_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
+    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+
     system_content = f"""{SYSTEM_PROMPT}
 
 Continue the conversation naturally, addressing the user's latest message while considering the conversation history.
 
-Conversation history:
-{conversation}
+{history_section}
 
 Provide a helpful response that continues the conversation naturally.
 
@@ -159,12 +160,13 @@ def book_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
+    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+
     system_content = f"""{SYSTEM_PROMPT}
 
 You are helping the user book an appointment. Consider the conversation history to understand what information has already been provided.
 
-Conversation history:
-{conversation}
+{history_section}
 
 Respond as a helpful booking assistant. If the user has already provided information (like preferred time or date), acknowledge it and ask for any missing details. Do not ask for information they have already given.
 
@@ -182,12 +184,13 @@ def cancel_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
+    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+
     system_content = f"""{SYSTEM_PROMPT}
 
 You are helping the user cancel an appointment. Consider the conversation history to understand what information has already been provided.
 
-Conversation history:
-{conversation}
+{history_section}
 
 Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the cancellation.
 
@@ -205,12 +208,13 @@ def reschedule_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
+    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+
     system_content = f"""{SYSTEM_PROMPT}
 
 You are helping the user reschedule an appointment. Consider the conversation history to understand what information has already been provided.
 
-Conversation history:
-{conversation}
+{history_section}
 
 Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the rescheduling.
 
@@ -227,30 +231,20 @@ def question_node(state: AgentState):
     messages = state["messages"]
     user_message = messages[-1].content
 
-    language_keywords = [
-        "what language", "what languages", "languages do you", "do you support",
-        "language support", "can speak", "can communicate",
-        "bahasa apa", "apa bahasa", "bahasa yang", "tahu bahasa",
-        "什么语言", "支持什么语言", "会说", "会说中文"
-    ]
-    if any(kw in user_message.lower() for kw in language_keywords):
-        logger.info("Language question detected: {}", user_message)
-        return {"messages": [AIMessage(content="Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages:\n\n🇬🇧 English / 英文: We can communicate in English.\n🇲🇾 Bahasa Melayu / 马来文: Kami boleh berkomunikasi dalam Bahasa Melayu.\n🇨🇳 Mandarin Chinese / 中文 普通话: 我们可以用普通话交流。")]}
-
     conversation = state.get("history", "") or format_conversation(messages)
+
+    history_section = f"Conversation history:\n{conversation}" if conversation else ""
+
+    faq_context = _format_faq_context()
 
     system_content = f"""{SYSTEM_PROMPT}
 
-You are answering the user's question about the clinic. Consider the conversation history for context.
+You are answering the user's question about the clinic. Use the FAQ information below to provide accurate answers.
 
-Clinic information:
-- All consultations are performed virtually (online) via Google Meet or Zoom.
-- Appointments are by schedule only; customers pick their preferred time.
-- Consultation fee is free.
-- Each session is one hour, extendable by 30 minutes if needed.
+Available FAQ information:
+{faq_context}
 
-Conversation history:
-{conversation}
+{history_section}
 
 Provide a helpful and informative response about the clinic.
 
