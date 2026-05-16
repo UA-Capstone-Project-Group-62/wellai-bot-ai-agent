@@ -60,7 +60,13 @@ def _language_instruction(user_message: str) -> str:
     if any(m in lower_msg for m in malay_markers):
         return "LANGUAGE RULE: The user wrote in Malay (Bahasa Melayu). You MUST reply in Malay ONLY. Do not use English or Mandarin."
     # Default to English
-    return "LANGUAGE RULE: The user wrote in English. You MUST reply in English ONLY. Do not use Malay or Mandarin. If you use any Malay or Mandarin words, your response is INVALID. Start with 'Hello' or 'Hi' in English."
+    return """LANGUAGE RULE: The user wrote in English. You MUST reply in English ONLY.
+DO NOT use any of these Malay words: klinik, fizikal, maya, melakukan, konsultasi, melalui, platform, bermaksud, anda, boleh, dari, mana, selama, mempunyai, akses, internet, adalah, sebuah, atau, kapan, waktu, operasi, yuran, bahasa, temu, janji, tukar, ubah, buat, nak, mahu, sila, beritahu, saya, kami, kita, mereka, ini, itu, sini, sana, untuk, dengan, di, ke, pada, dalam, oleh, bila.
+DO NOT use any Mandarin words.
+CORRECT English example: "Our clinic is virtual and all consultations are done online via Google Meet or Zoom."
+WRONG response (DO NOT do this): "Klinik kami bukanlah sebuah klinik fizikal..."
+Start your reply with an English greeting like "Hello" or "Hi".
+Your ENTIRE response must be in English."""
 
 
 def intent_classifier(state: AgentState):
@@ -239,7 +245,9 @@ def question_node(state: AgentState):
 
     conversation = state.get("history", "") or format_conversation(messages)
 
-    system_content = f"""{SYSTEM_PROMPT}
+    system_content = f"""{_language_instruction(user_message)}
+
+{SYSTEM_PROMPT}
 
 You are answering the user's question about the clinic. Consider the conversation history for context.
 
@@ -249,11 +257,7 @@ Available FAQ information:
 Conversation history:
 {conversation}
 
-Provide a helpful and informative response about the clinic.
-
-{_language_instruction(user_message)}
-
-REMEMBER: Start your response directly in the correct language. Do NOT use any other language."""
+Provide a helpful and informative response about the clinic."""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
