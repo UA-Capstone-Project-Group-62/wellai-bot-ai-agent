@@ -12,7 +12,7 @@ from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 # LangChain Groq wrapper
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
-    temperature=0.7,
+    temperature=0.3,
     max_tokens=300
 )
 
