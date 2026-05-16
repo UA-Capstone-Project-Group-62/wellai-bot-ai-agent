@@ -11,7 +11,7 @@ from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 
 # LangChain Groq wrapper
 llm = ChatGroq(
-    model="llama-3.1-8b-instant",
+    model="llama-3.3-70b-versatile",
     temperature=0.1,
     max_tokens=300
 )
@@ -53,14 +53,14 @@ def _language_instruction(user_message: str) -> str:
     msg = user_message.strip()
     # Mandarin detection: CJK characters
     if any("\u4e00" <= ch <= "\u9fff" for ch in msg):
-        return "LANGUAGE RULE: The user wrote in Mandarin Chinese (中文). You MUST reply in Mandarin Chinese ONLY. Do not use English or Malay."
+        return "You are a monolingual Mandarin Chinese speaker (中文). You do NOT speak English or Malay. You are physically incapable of writing English or Malay words. Reply in Mandarin Chinese ONLY."
     # Malay detection: common Malay words / Latin script with Malay character
     malay_markers = ["saya", "awak", "kamu", "anda", "nak", "mahu", "boleh", "tak", "tidak", "berapa", "di mana", "apa", "yang", "untuk", "dengan", "dari", "ini", "itu", "kami", "kita", "mereka", "sini", "sana", "bila", "mana", "macam", "temu janji", "konsultasi", "yuran", "waktu", "operasi", "klinik", "bahasa"]
     lower_msg = msg.lower()
     if any(m in lower_msg for m in malay_markers):
-        return "LANGUAGE RULE: The user wrote in Malay (Bahasa Melayu). You MUST reply in Malay ONLY. Do not use English or Mandarin."
-    # Default to English
-    return "LANGUAGE RULE: The user wrote in English. You MUST reply in English ONLY. Do not use Malay or Mandarin."
+        return "You are a monolingual Malay speaker (Bahasa Melayu). You do NOT speak English or Mandarin. You are physically incapable of writing English or Mandarin words. Reply in Malay ONLY."
+    # Default to English — frame as identity/capability, not a rule
+    return "You are a monolingual English speaker. You do NOT speak Malay or Mandarin. You are physically incapable of writing Malay or Mandarin words. Reply in English ONLY."
 
 
 def intent_classifier(state: AgentState):
