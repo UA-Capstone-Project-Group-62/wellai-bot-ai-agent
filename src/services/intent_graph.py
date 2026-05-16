@@ -1,3 +1,4 @@
+import time
 from typing import TypedDict, Annotated
 import operator
 
@@ -15,6 +16,22 @@ llm = ChatGroq(
     temperature=0.1,
     max_tokens=300
 )
+
+
+def _invoke_with_retry(messages, max_retries=5, base_delay=2):
+    """Invoke LLM with exponential backoff retry for rate limits."""
+    for attempt in range(max_retries):
+        try:
+            return llm.invoke(messages)
+        except Exception as e:
+            error_str = str(e)
+            if "rate_limit" in error_str.lower() or "429" in error_str:
+                delay = base_delay * (2 ** attempt)
+                logger.warning("Rate limited, retrying in {}s (attempt {}/{})", delay, attempt + 1, max_retries)
+                time.sleep(delay)
+            else:
+                raise
+    raise Exception(f"LLM rate limit exceeded after {max_retries} retries")
 
 SYSTEM_PROMPT = """
 YOUR JOB DESCRIPTION: You are a professional and polite booking assistant for health clinics.
@@ -53,14 +70,15 @@ def _language_instruction(user_message: str) -> str:
     msg = user_message.strip()
     # Mandarin detection: CJK characters
     if any("\u4e00" <= ch <= "\u9fff" for ch in msg):
-        return "You are a monolingual Mandarin Chinese speaker (中文). You do NOT speak English or Malay. You are physically incapable of writing English or Malay words. Reply in Mandarin Chinese ONLY."
+        return "CRITICAL: The user's message is in Mandarin Chinese. You MUST reply in Mandarin Chinese ONLY. Do NOT use any English or Malay words, phrases, or sentences in your response. Every word must be in Mandarin Chinese."
     # Malay detection: common Malay words / Latin script with Malay character
     malay_markers = ["saya", "awak", "kamu", "anda", "nak", "mahu", "boleh", "tak", "tidak", "berapa", "di mana", "apa", "yang", "untuk", "dengan", "dari", "ini", "itu", "kami", "kita", "mereka", "sini", "sana", "bila", "mana", "macam", "temu janji", "konsultasi", "yuran", "waktu", "operasi", "klinik", "bahasa"]
     lower_msg = msg.lower()
-    if any(m in lower_msg for m in malay_markers):
-        return "You are a monolingual Malay speaker (Bahasa Melayu). You do NOT speak English or Mandarin. You are physically incapable of writing English or Mandarin words. Reply in Malay ONLY."
+    import re
+    if any(re.search(rf'\b{re.escape(m)}\b', lower_msg) for m in malay_markers):
+        return "CRITICAL: The user's message is in Malay (Bahasa Melayu). You MUST reply in Malay ONLY. Do NOT use any English or Mandarin words, phrases, or sentences in your response. Every word must be in Malay."
     # Default to English — frame as identity/capability, not a rule
-    return "You are a monolingual English speaker. You do NOT speak Malay or Mandarin. You are physically incapable of writing Malay or Mandarin words. Reply in English ONLY."
+    return "CRITICAL: The user's message is in English. You MUST reply in English ONLY. Do NOT use any Malay or Mandarin words, phrases, or sentences in your response. Every word must be in English."
 
 
 def intent_classifier(state: AgentState):
@@ -98,7 +116,7 @@ EXAMPLES:
 
 Return ONLY the intent label, nothing else."""
 
-    response = llm.invoke([
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=f"Message: {user_message}"),
     ])
@@ -148,7 +166,7 @@ Provide a helpful response that continues the conversation naturally.
 
 {_language_instruction(user_message)}"""
 
-    response = llm.invoke([
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -172,7 +190,7 @@ Respond as a helpful booking assistant. If the user has already provided informa
 
 {_language_instruction(user_message)}"""
 
-    response = llm.invoke([
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -196,7 +214,7 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
 
 {_language_instruction(user_message)}"""
 
-    response = llm.invoke([
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -220,7 +238,7 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
 
 {_language_instruction(user_message)}"""
 
-    response = llm.invoke([
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -247,6 +265,8 @@ def question_node(state: AgentState):
 
     faq_context = _format_faq_context()
 
+    lang_instr = _language_instruction(user_message)
+
     system_content = f"""{SYSTEM_PROMPT}
 
 You are answering the user's question about the clinic. Use the FAQ information below to provide accurate answers.
@@ -258,9 +278,12 @@ Available FAQ information:
 
 Provide a helpful and informative response about the clinic.
 
-{_language_instruction(user_message)}"""
+Example Q&A (follow the language of the question):
+- "Where is your clinic located?" -> Answer in the same language as the question, referencing virtual consultations from the FAQ.
 
-    response = llm.invoke([
+{lang_instr}"""
+
+    response = _invoke_with_retry([
         SystemMessage(content=system_content),
         HumanMessage(content=user_message),
     ])
@@ -271,8 +294,8 @@ def _format_faq_context() -> str:
     faq_lines = []
     for key, value in FAQ_KNOWLEDGE_BASE.items():
         faq_lines.append(f"- {key}: {value}")
-    result = "\n".join(faq_lines)
-    return f"FAQ Information (available in English, Malay, and Mandarin — select the language matching the user's query):\n{result}"
+    return "\n".join(faq_lines)
+
 
 
 def _route(state: AgentState):
