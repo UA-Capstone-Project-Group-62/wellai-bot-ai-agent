@@ -60,13 +60,7 @@ def _language_instruction(user_message: str) -> str:
     if any(m in lower_msg for m in malay_markers):
         return "LANGUAGE RULE: The user wrote in Malay (Bahasa Melayu). You MUST reply in Malay ONLY. Do not use English or Mandarin."
     # Default to English
-    return """LANGUAGE RULE: The user wrote in English. You MUST reply in English ONLY.
-DO NOT use any of these Malay words: klinik, fizikal, maya, melakukan, konsultasi, melalui, platform, bermaksud, anda, boleh, dari, mana, selama, mempunyai, akses, internet, adalah, sebuah, atau, kapan, waktu, operasi, yuran, bahasa, temu, janji, tukar, ubah, buat, nak, mahu, sila, beritahu, saya, kami, kita, mereka, ini, itu, sini, sana, untuk, dengan, di, ke, pada, dalam, oleh, bila.
-DO NOT use any Mandarin words.
-CORRECT English example: "Our clinic is virtual and all consultations are done online via Google Meet or Zoom."
-WRONG response (DO NOT do this): "Klinik kami bukanlah sebuah klinik fizikal..."
-Start your reply with an English greeting like "Hello" or "Hi".
-Your ENTIRE response must be in English."""
+    return "LANGUAGE RULE: The user wrote in English. You MUST reply in English ONLY. Do not use Malay or Mandarin."
 
 
 def intent_classifier(state: AgentState):
@@ -137,6 +131,17 @@ def _parse_intent(raw: str) -> str:
     return "unrelated_to_your_job"
 
 
+def _language_tag(user_message: str) -> str:
+    """Return a language tag prefix for the user message."""
+    msg = user_message.strip()
+    if any("\u4e00" <= ch <= "\u9fff" for ch in msg):
+        return "[MANDARIN USER]"
+    malay_markers = ["saya", "awak", "kamu", "anda", "nak", "mahu", "boleh", "tak", "tidak", "berapa", "di mana", "apa", "yang", "untuk", "dengan", "dari", "ini", "itu", "kami", "kita", "mereka", "sini", "sana", "bila", "mana", "macam", "temu janji", "konsultasi", "yuran", "waktu", "operasi", "klinik", "bahasa"]
+    if any(m in msg.lower() for m in malay_markers):
+        return "[MALAY USER]"
+    return "[ENGLISH USER]"
+
+
 def agent_node(state: AgentState):
     messages = state["messages"]
     conversation = state.get("history", "") or format_conversation(messages)
@@ -155,7 +160,7 @@ Provide a helpful response that continues the conversation naturally."""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=user_message),
+        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
     ])
     return {"messages": [response]}
 
@@ -178,7 +183,7 @@ Respond as a helpful booking assistant. If the user has already provided informa
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=user_message),
+        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
     ])
     return {"messages": [response]}
 
@@ -201,7 +206,7 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=user_message),
+        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
     ])
     return {"messages": [response]}
 
@@ -224,7 +229,7 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=user_message),
+        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
     ])
     return {"messages": [response]}
 
@@ -261,7 +266,7 @@ Provide a helpful and informative response about the clinic."""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=user_message),
+        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
     ])
     return {"messages": [response]}
 
