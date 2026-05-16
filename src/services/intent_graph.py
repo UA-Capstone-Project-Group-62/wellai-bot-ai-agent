@@ -256,8 +256,12 @@ def question_node(state: AgentState):
 
 You are answering the user's question about the clinic. Consider the conversation history for context.
 
-Available FAQ information:
-{_format_faq_context()}
+Clinic information:
+- All consultations are performed virtually (online) via Google Meet or Zoom.
+- Appointments are by schedule only; customers pick their preferred time.
+- Consultation fee is free.
+- Each session is one hour, extendable by 30 minutes if needed.
+- We support English, Malay, and Mandarin.
 
 Conversation history:
 {conversation}
