@@ -20,6 +20,8 @@ SYSTEM_PROMPT = """
 YOUR JOB DESCRIPTION: You are a professional and polite booking assistant for health clinics.
 You are happy to help users with booking, cancelling, and rescheduling appointments.
 You can also answer questions about the clinic, but you will never give medical advice or answers not related to your job.
+
+IMPORTANT: Always respond in the SAME LANGUAGE the user is using (English, Malay/Bahasa Melayu, or Mandarin/中文). If the user writes in Malay, reply in Malay. If the user writes in Mandarin, reply in Mandarin.
 """
 
 POSSIBLE_INTENTS = [
@@ -56,10 +58,11 @@ def intent_classifier(state: AgentState):
 Please classify the user message into one of these intents ONLY: {POSSIBLE_INTENTS}
 
 IMPORTANT RULES:
-- "book_app" = User explicitly wants to CREATE/MAKE a new appointment (e.g., "I want to book", "I need an appointment", "Saya nak buat temu janji", "我想预约")
-- "cancel_app" = User wants to CANCEL an existing appointment
-- "reschedule_app" = User wants to CHANGE an existing appointment time/date
-- "ask_question" = User is asking for INFORMATION about the clinic, hours, location, fees, services, etc. (e.g., "What are your hours?", "Where is your clinic?", "How much?", "Berapa yuran", "营业时间")
+- Classify based on the USER'S INTENT/ACTION, not the language they use.
+- "book_app" = User explicitly wants to CREATE/MAKE a new appointment (e.g., "I want to book", "I need an appointment", "Saya nak buat temu janji", "我想预约", "Saya mahu temujanji")
+- "cancel_app" = User wants to CANCEL an existing appointment (e.g., "I want to cancel", "Batal temu janji", "取消预约")
+- "reschedule_app" = User wants to CHANGE/MOVE an existing appointment time/date (e.g., "Can I reschedule", "Boleh saya tukar tarikh temu janji", "我可以改预约吗", "tukar jadual", "ubah masa")
+- "ask_question" = User is asking for INFORMATION about the clinic, hours, location, fees, services, etc. (e.g., "What are your hours?", "Where is your clinic?", "How much?", "Berapa yuran", "营业时间", "Di mana klinik", "berapa harga")
 - "unrelated_to_your_job" = Everything else
 
 EXAMPLES:
@@ -72,8 +75,13 @@ EXAMPLES:
 - "Saya nak buat temu janji" -> book_app
 - "Apakah waktu operasi anda?" -> ask_question
 - "Berapa yuran konsultasi?" -> ask_question
+- "Boleh saya tukar tarikh temu janji?" -> reschedule_app
+- "Saya mahu batal temu janji" -> cancel_app
 - "我可以改预约吗?" -> reschedule_app
 - "我想预约看诊" -> book_app
+- "你们诊所在哪里？" -> ask_question
+- "看诊费用是多少？" -> ask_question
+- "Berapa harga konsultasi?" -> ask_question
 
 Return ONLY the intent label, nothing else."""
 
@@ -206,7 +214,7 @@ def question_node(state: AgentState):
     ]
     if any(kw in user_message.lower() for kw in language_keywords):
         logger.info("Language question detected: {}", user_message)
-        return {"messages": [AIMessage(content="Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages:\n\n🇬🇧 English: We can communicate in English.\n🇲🇾 Bahasa Melayu: Kami boleh berkomunikasi dalam Bahasa Melayu.\n🇨🇳 普通话: 我们可以用普通话交流。")]}
+        return {"messages": [AIMessage(content="Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages:\n\n🇬🇧 English / 英文: We can communicate in English.\n🇲🇾 Bahasa Melayu / 马来文: Kami boleh berkomunikasi dalam Bahasa Melayu.\n🇨🇳 Mandarin Chinese / 中文 普通话: 我们可以用普通话交流。")]}
 
     conversation = state.get("history", "") or format_conversation(messages)
 
