@@ -39,7 +39,7 @@ class AgentState(TypedDict):
 
 def format_conversation(messages: list[BaseMessage]) -> str:
     if len(messages) <= 1:
-        return "No previous messages."
+        return ""
 
     formatted = []
     for msg in messages[:-1]:
@@ -131,36 +131,25 @@ def _parse_intent(raw: str) -> str:
     return "unrelated_to_your_job"
 
 
-def _language_tag(user_message: str) -> str:
-    """Return a language tag prefix for the user message."""
-    msg = user_message.strip()
-    if any("\u4e00" <= ch <= "\u9fff" for ch in msg):
-        return "[MANDARIN USER]"
-    malay_markers = ["saya", "awak", "kamu", "anda", "nak", "mahu", "boleh", "tak", "tidak", "berapa", "di mana", "apa", "yang", "untuk", "dengan", "dari", "ini", "itu", "kami", "kita", "mereka", "sini", "sana", "bila", "mana", "macam", "temu janji", "konsultasi", "yuran", "waktu", "operasi", "klinik", "bahasa"]
-    if any(m in msg.lower() for m in malay_markers):
-        return "[MALAY USER]"
-    return "[ENGLISH USER]"
-
-
 def agent_node(state: AgentState):
     messages = state["messages"]
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    system_content = f"""{_language_instruction(user_message)}
-
-{SYSTEM_PROMPT}
+    system_content = f"""{SYSTEM_PROMPT}
 
 Continue the conversation naturally, addressing the user's latest message while considering the conversation history.
 
 Conversation history:
 {conversation}
 
-Provide a helpful response that continues the conversation naturally."""
+Provide a helpful response that continues the conversation naturally.
+
+{_language_instruction(user_message)}"""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
+        HumanMessage(content=user_message),
     ])
     return {"messages": [response]}
 
@@ -170,20 +159,20 @@ def book_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    system_content = f"""{_language_instruction(user_message)}
-
-{SYSTEM_PROMPT}
+    system_content = f"""{SYSTEM_PROMPT}
 
 You are helping the user book an appointment. Consider the conversation history to understand what information has already been provided.
 
 Conversation history:
 {conversation}
 
-Respond as a helpful booking assistant. If the user has already provided information (like preferred time or date), acknowledge it and ask for any missing details. Do not ask for information they have already given."""
+Respond as a helpful booking assistant. If the user has already provided information (like preferred time or date), acknowledge it and ask for any missing details. Do not ask for information they have already given.
+
+{_language_instruction(user_message)}"""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
+        HumanMessage(content=user_message),
     ])
     return {"messages": [response]}
 
@@ -193,20 +182,20 @@ def cancel_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    system_content = f"""{_language_instruction(user_message)}
-
-{SYSTEM_PROMPT}
+    system_content = f"""{SYSTEM_PROMPT}
 
 You are helping the user cancel an appointment. Consider the conversation history to understand what information has already been provided.
 
 Conversation history:
 {conversation}
 
-Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the cancellation."""
+Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the cancellation.
+
+{_language_instruction(user_message)}"""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
+        HumanMessage(content=user_message),
     ])
     return {"messages": [response]}
 
@@ -216,20 +205,20 @@ def reschedule_node(state: AgentState):
     conversation = state.get("history", "") or format_conversation(messages)
     user_message = messages[-1].content
 
-    system_content = f"""{_language_instruction(user_message)}
-
-{SYSTEM_PROMPT}
+    system_content = f"""{SYSTEM_PROMPT}
 
 You are helping the user reschedule an appointment. Consider the conversation history to understand what information has already been provided.
 
 Conversation history:
 {conversation}
 
-Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the rescheduling."""
+Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the rescheduling.
+
+{_language_instruction(user_message)}"""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
+        HumanMessage(content=user_message),
     ])
     return {"messages": [response]}
 
@@ -250,9 +239,7 @@ def question_node(state: AgentState):
 
     conversation = state.get("history", "") or format_conversation(messages)
 
-    system_content = f"""{_language_instruction(user_message)}
-
-{SYSTEM_PROMPT}
+    system_content = f"""{SYSTEM_PROMPT}
 
 You are answering the user's question about the clinic. Consider the conversation history for context.
 
@@ -261,16 +248,17 @@ Clinic information:
 - Appointments are by schedule only; customers pick their preferred time.
 - Consultation fee is free.
 - Each session is one hour, extendable by 30 minutes if needed.
-- We support English, Malay, and Mandarin.
 
 Conversation history:
 {conversation}
 
-Provide a helpful and informative response about the clinic."""
+Provide a helpful and informative response about the clinic.
+
+{_language_instruction(user_message)}"""
 
     response = llm.invoke([
         SystemMessage(content=system_content),
-        HumanMessage(content=f"{_language_tag(user_message)}: {user_message}"),
+        HumanMessage(content=user_message),
     ])
     return {"messages": [response]}
 
