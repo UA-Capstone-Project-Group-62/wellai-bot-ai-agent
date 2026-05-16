@@ -1,4 +1,4 @@
-from typing import TypedDict, Annotated, NotRequired
+from typing import TypedDict, Annotated
 import operator
 
 from langgraph.graph import StateGraph, END
