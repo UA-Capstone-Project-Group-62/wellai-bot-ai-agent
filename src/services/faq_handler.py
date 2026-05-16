@@ -55,5 +55,3 @@ Examples:
             logger.error("FAQ LLM matching failed: {}", e)
             return None
 
-    def format_response(self, answer: str) -> str:
-        return f"Here's what I found:\n\n{answer}\n\nIs there anything else I can help you with?"

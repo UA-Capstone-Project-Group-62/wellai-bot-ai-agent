@@ -43,44 +43,52 @@ def run_tests(addr: str, bot_addr: str):
     print(f"BotService at {bot_addr}")
     print("=" * 60)
 
+    # Each case: (language, user_message, expected_substrings)
+    # A test passes only if the response contains at least one of the expected substrings.
     test_cases = [
-        ("English", "Hello, I want to book an appointment"),
-        ("English", "What are your working hours?"),
-        ("English", "Can I reschedule my appointment?"),
-        ("English", "Where is your clinic located?"),
-        ("English", "How much is the consultation fee?"),
-        ("English", "What languages do you know?"),
-        ("Malay", "Saya nak buat temu janji"),
-        ("Malay", "Apakah waktu operasi anda?"),
-        ("Malay", "Boleh saya tukar tarikh temu janji?"),
-        ("Malay", "Di mana klinik anda?"),
-        ("Malay", "Berapa yuran konsultasi?"),
-        ("Malay", "Apakah bahasa yang anda faham?"),
-        ("Mandarin", "我想预约看诊"),
-        ("Mandarin", "你们的营业时间是什么时候？"),
-        ("Mandarin", "我可以改预约吗？"),
-        ("Mandarin", "你们的诊所在哪里？"),
-        ("Mandarin", "看诊费用是多少？"),
-        ("Mandarin", "你们支持什么语言？"),
+        ("English", "Hello, I want to book an appointment", ["book", "appointment"]),
+        ("English", "What are your working hours?", ["hour", "time", "open", "operat"]),
+        ("English", "Can I reschedule my appointment?", ["reschedule", "change", "appointment"]),
+        ("English", "Where is your clinic located?", ["location", "address", "where", "clinic"]),
+        ("English", "How much is the consultation fee?", ["fee", "cost", "price", "consultation"]),
+        ("English", "What languages do you know?", ["English", "Malay", "Mandarin", "Chinese", "Bahasa", "普通话"]),
+        ("Malay", "Saya nak buat temu janji", ["temu janji", "appointment", "book"]),
+        ("Malay", "Apakah waktu operasi anda?", ["waktu", "operasi", "jam", "buka"]),
+        ("Malay", "Boleh saya tukar tarikh temu janji?", ["tukar", "temu janji", "appointment"]),
+        ("Malay", "Di mana klinik anda?", ["klinik", "lokasi", "alamat", "di mana"]),
+        ("Malay", "Berapa yuran konsultasi?", ["yuran", "konsultasi", "bayaran", "harga"]),
+        ("Malay", "Apakah bahasa yang anda faham?", ["Bahasa", "English", "Mandarin", "Chinese", "普通话"]),
+        ("Mandarin", "我想预约看诊", ["预约", "看诊", "门诊"]),
+        ("Mandarin", "你们的营业时间是什么时候？", ["营业", "时间", "开门", "几点"]),
+        ("Mandarin", "我可以改预约吗？", ["改", "预约", "时间"]),
+        ("Mandarin", "你们的诊所在哪里？", ["诊所", "哪里", "地址", "位置"]),
+        ("Mandarin", "看诊费用是多少？", ["费用", "多少", "价钱", "收费"]),
+        ("Mandarin", "你们支持什么语言？", ["语言", "中文", "普通话", "英文", "马来文"]),
     ]
 
     results = {"English": {"passed": 0, "failed": 0}, "Malay": {"passed": 0, "failed": 0}, "Mandarin": {"passed": 0, "failed": 0}}
 
     counter = 0
 
-    for lang, message in test_cases:
+    for lang, message, expected_substrings in test_cases:
         counter += 1
         user_id = f"test_{lang.lower()}_{counter}"
         print(f"\n[{lang}] {message}")
         response = send_and_get_response(agent_stub, bot_stub, user_id, message, lang)
         print(f"  → Response: {response}")
 
-        if response and not response.startswith("ERROR") and response != "(No response found)":
+        has_content = response and not response.startswith("ERROR") and response != "(No response found)"
+        has_expected = has_content and any(s.lower() in response.lower() for s in expected_substrings)
+
+        if has_content and has_expected:
             results[lang]["passed"] += 1
             print(f"  ✓ PASS")
         else:
             results[lang]["failed"] += 1
-            print(f"  ✗ FAIL")
+            if not has_content:
+                print(f"  ✗ FAIL — no valid response")
+            else:
+                print(f"  ✗ FAIL — response missing expected substring(s): {expected_substrings}")
 
         time.sleep(0.5)
 

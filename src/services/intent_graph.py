@@ -6,7 +6,6 @@ from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AI
 from langchain_groq import ChatGroq
 from loguru import logger
 
-from src.services.faq_handler import FAQHandler
 from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 
 
@@ -208,13 +207,6 @@ def question_node(state: AgentState):
     if any(kw in user_message.lower() for kw in language_keywords):
         logger.info("Language question detected: {}", user_message)
         return {"messages": [AIMessage(content="Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages:\n\n🇬🇧 English: We can communicate in English.\n🇲🇾 Bahasa Melayu: Kami boleh berkomunikasi dalam Bahasa Melayu.\n🇨🇳 普通话: 我们可以用普通话交流。")]}
-
-    faq_handler = FAQHandler()
-    faq_answer = faq_handler.get_answer(user_message)
-
-    if faq_answer:
-        logger.info("FAQ match found for question: {}", user_message)
-        return {"messages": [AIMessage(content=faq_answer)]}
 
     conversation = state.get("history", "") or format_conversation(messages)
 
