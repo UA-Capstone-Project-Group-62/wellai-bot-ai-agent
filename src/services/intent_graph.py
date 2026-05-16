@@ -12,7 +12,7 @@ from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 # LangChain Groq wrapper
 llm = ChatGroq(
     model="llama-3.1-8b-instant",
-    temperature=0.3,
+    temperature=0.1,
     max_tokens=300
 )
 
@@ -60,7 +60,7 @@ def _language_instruction(user_message: str) -> str:
     if any(m in lower_msg for m in malay_markers):
         return "LANGUAGE RULE: The user wrote in Malay (Bahasa Melayu). You MUST reply in Malay ONLY. Do not use English or Mandarin."
     # Default to English
-    return "LANGUAGE RULE: The user wrote in English. You MUST reply in English ONLY. Do not use Malay or Mandarin."
+    return "LANGUAGE RULE: The user wrote in English. You MUST reply in English ONLY. Do not use Malay or Mandarin. If you use any Malay or Mandarin words, your response is INVALID. Start with 'Hello' or 'Hi' in English."
 
 
 def intent_classifier(state: AgentState):
