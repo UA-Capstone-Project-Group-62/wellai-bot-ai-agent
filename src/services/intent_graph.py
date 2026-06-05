@@ -1,6 +1,7 @@
 import time
 from typing import TypedDict, Annotated
 import operator
+import re
 
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
@@ -10,19 +11,25 @@ from loguru import logger
 from src.services.faq_knowledge_base import FAQ_KNOWLEDGE_BASE
 
 
-# LangChain Groq wrapper
-llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
-    temperature=0.1,
-    max_tokens=300
-)
+_llm = None
+
+
+def _get_llm():
+    global _llm
+    if _llm is None:
+        _llm = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            temperature=0.1,
+            max_tokens=300,
+        )
+    return _llm
 
 
 def _invoke_with_retry(messages, max_retries=5, base_delay=2):
     """Invoke LLM with exponential backoff retry for rate limits."""
     for attempt in range(max_retries):
         try:
-            return llm.invoke(messages)
+            return _get_llm().invoke(messages)
         except Exception as e:
             error_str = str(e)
             if "rate_limit" in error_str.lower() or "429" in error_str:
@@ -37,6 +44,7 @@ SYSTEM_PROMPT = """
 YOUR JOB DESCRIPTION: You are a professional and polite booking assistant for health clinics.
 You are happy to help users with booking, cancelling, and rescheduling appointments.
 You can also answer questions about the clinic, but you will never give medical advice or answers not related to your job.
+LANGUAGE SUPPORT FACT: This clinic assistant supports exactly English, Bahasa Melayu (Malay), and Mandarin Chinese. Never claim support for Spanish, French, German, Italian, Portuguese, Arabic, Japanese, language-line services, or any language outside English, Bahasa Melayu, and Mandarin Chinese.
 """
 
 POSSIBLE_INTENTS = [
@@ -44,7 +52,42 @@ POSSIBLE_INTENTS = [
     "cancel_app",
     "reschedule_app",
     "ask_question",
+    "language_support",
     "unrelated_to_your_job",
+]
+
+LANGUAGE_SUPPORT_RESPONSE = "Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages:\n\n🇬🇧 English / 英文: We can communicate in English.\n🇲🇾 Bahasa Melayu / 马来文: Kami boleh berkomunikasi dalam Bahasa Melayu.\n🇨🇳 Mandarin Chinese / 中文 普通话: 我们可以用普通话交流。"
+
+LANGUAGE_SUPPORT_KEYWORDS = [
+    "what language",
+    "what languages",
+    "which language",
+    "which languages",
+    "other language",
+    "other languages",
+    "languages do you",
+    "language do you",
+    "do you support",
+    "language support",
+    "can speak",
+    "can communicate",
+    "what do you speak",
+    "what can you speak",
+    "what do you know how to speak",
+    "know how to speak",
+    "which language can you speak",
+    "which languages can you speak",
+    "bahasa apa",
+    "apa bahasa",
+    "bahasa yang",
+    "bahasa lain",
+    "tahu bahasa",
+    "什么语言",
+    "支持什么语言",
+    "其他语言",
+    "别的语言",
+    "会说",
+    "会说中文",
 ]
 
 
@@ -74,15 +117,73 @@ def _language_instruction(user_message: str) -> str:
     # Malay detection: common Malay words / Latin script with Malay character
     malay_markers = ["saya", "awak", "kamu", "anda", "nak", "mahu", "boleh", "tak", "tidak", "berapa", "di mana", "apa", "yang", "untuk", "dengan", "dari", "ini", "itu", "kami", "kita", "mereka", "sini", "sana", "bila", "mana", "macam", "temu janji", "konsultasi", "yuran", "waktu", "operasi", "klinik", "bahasa"]
     lower_msg = msg.lower()
-    import re
     if any(re.search(rf'\b{re.escape(m)}\b', lower_msg) for m in malay_markers):
         return "CRITICAL: The user's message is in Malay (Bahasa Melayu). You MUST reply in Malay ONLY. Do NOT use any English or Mandarin words, phrases, or sentences in your response. Every word must be in Malay."
     # Default to English — frame as identity/capability, not a rule
     return "CRITICAL: The user's message is in English. You MUST reply in English ONLY. Do NOT use any Malay or Mandarin words, phrases, or sentences in your response. Every word must be in English."
 
 
+def _is_language_support_question(user_message: str) -> bool:
+    lower_message = user_message.lower()
+    if any(keyword in lower_message for keyword in LANGUAGE_SUPPORT_KEYWORDS):
+        return True
+
+    normalized = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", lower_message).strip()
+    tokens = normalized.split()
+    compact = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", lower_message)
+
+    if any(keyword.replace(" ", "") in compact for keyword in LANGUAGE_SUPPORT_KEYWORDS):
+        return True
+
+    has_language_word = any(_looks_like_language_word(token) for token in tokens)
+    has_knowledge_word = any(token in {"know", "support", "understand"} for token in tokens) or "know" in compact
+    has_speech_word = any(token in {"speak", "speaks", "talk", "communicate"} for token in tokens)
+    has_question_word = any(token in {"what", "which", "how", "can", "do"} for token in tokens)
+
+    if has_language_word and (has_knowledge_word or has_speech_word):
+        return True
+
+    return has_speech_word and has_question_word and ("know" in compact or "can" in tokens)
+
+
+def _looks_like_language_word(token: str) -> bool:
+    if token in {"language", "languages", "lang", "langs", "bahasa"}:
+        return True
+    return (
+        _edit_distance_at_most(token, "language", 1)
+        or _edit_distance_at_most(token, "languages", 1)
+    )
+
+
+def _edit_distance_at_most(value: str, target: str, max_distance: int) -> bool:
+    if abs(len(value) - len(target)) > max_distance:
+        return False
+
+    previous = list(range(len(target) + 1))
+    for i, value_char in enumerate(value, start=1):
+        current = [i]
+        row_min = i
+        for j, target_char in enumerate(target, start=1):
+            cost = 0 if value_char == target_char else 1
+            edit_count = min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + cost,
+            )
+            current.append(edit_count)
+            row_min = min(row_min, edit_count)
+        if row_min > max_distance:
+            return False
+        previous = current
+
+    return previous[-1] <= max_distance
+
+
 def intent_classifier(state: AgentState):
     user_message = state["messages"][-1].content
+    if _is_language_support_question(user_message):
+        logger.info("Language support question detected by local heuristic: {}", user_message)
+        return {"intent": "language_support"}
 
     system_content = f"""{SYSTEM_PROMPT}
 
@@ -94,6 +195,7 @@ IMPORTANT RULES:
 - "cancel_app" = User wants to CANCEL an existing appointment (e.g., "I want to cancel", "Batal temu janji", "取消预约")
 - "reschedule_app" = User wants to CHANGE/MOVE an existing appointment time/date (e.g., "Can I reschedule", "Boleh saya tukar tarikh temu janji", "我可以改预约吗", "tukar jadual", "ubah masa")
 - "ask_question" = User is asking for INFORMATION about the clinic, hours, location, fees, services, etc. (e.g., "What are your hours?", "Where is your clinic?", "How much?", "Berapa yuran", "营业时间", "Di mana klinik", "berapa harga")
+- "language_support" = User asks what languages the AI assistant, clinic, staff, service, or bot can speak, understand, communicate in, or support. This includes typos, indirect wording, and follow-up questions about language proficiency/support.
 - "unrelated_to_your_job" = Everything else
 
 EXAMPLES:
@@ -113,6 +215,12 @@ EXAMPLES:
 - "你们诊所在哪里？" -> ask_question
 - "看诊费用是多少？" -> ask_question
 - "Berapa harga konsultasi?" -> ask_question
+- "What languages do you know?" -> language_support
+- "What do you know how to speak?" -> language_support
+- "What languages are supported?" -> language_support
+- "Can you communicate in Malay or Mandarin?" -> language_support
+- "Apakah bahasa yang anda faham?" -> language_support
+- "你会说什么语言？" -> language_support
 
 Return ONLY the intent label, nothing else."""
 
@@ -245,19 +353,18 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
     return {"messages": [response]}
 
 
+def language_support_node(state: AgentState):
+    logger.info("Language support response returned")
+    return {"messages": [AIMessage(content=LANGUAGE_SUPPORT_RESPONSE)]}
+
+
 def question_node(state: AgentState):
     messages = state["messages"]
     user_message = messages[-1].content
 
-    language_keywords = [
-        "what language", "what languages", "languages do you", "do you support",
-        "language support", "can speak", "can communicate",
-        "bahasa apa", "apa bahasa", "bahasa yang", "tahu bahasa",
-        "什么语言", "支持什么语言", "会说", "会说中文"
-    ]
-    if any(kw in user_message.lower() for kw in language_keywords):
+    if _is_language_support_question(user_message):
         logger.info("Language question detected: {}", user_message)
-        return {"messages": [AIMessage(content="Our health clinic is committed to providing excellent care to patients from diverse backgrounds. Our staff, including our doctors and nurses, are multilingual and proficient in three languages:\n\n🇬🇧 English / 英文: We can communicate in English.\n🇲🇾 Bahasa Melayu / 马来文: Kami boleh berkomunikasi dalam Bahasa Melayu.\n🇨🇳 Mandarin Chinese / 中文 普通话: 我们可以用普通话交流。")]}
+        return language_support_node(state)
 
     conversation = state.get("history", "") or format_conversation(messages)
 
@@ -307,6 +414,8 @@ def _route(state: AgentState):
         return "cancel"
     elif intent == "reschedule_app":
         return "reschedule"
+    elif intent == "language_support":
+        return "language_support"
     elif intent == "ask_question":
         return "question"
     else:
@@ -322,6 +431,7 @@ _workflow.add_node("agent", agent_node)
 _workflow.add_node("book", book_node)
 _workflow.add_node("cancel", cancel_node)
 _workflow.add_node("reschedule", reschedule_node)
+_workflow.add_node("language_support", language_support_node)
 _workflow.add_node("question", question_node)
 
 _workflow.set_entry_point("intent")
@@ -332,6 +442,7 @@ _workflow.add_conditional_edges(
         "book": "book",
         "cancel": "cancel",
         "reschedule": "reschedule",
+        "language_support": "language_support",
         "question": "question",
         "agent": "agent",
     },
@@ -339,6 +450,7 @@ _workflow.add_conditional_edges(
 _workflow.add_edge("book", END)
 _workflow.add_edge("cancel", END)
 _workflow.add_edge("reschedule", END)
+_workflow.add_edge("language_support", END)
 _workflow.add_edge("question", END)
 _workflow.add_edge("agent", END)
 
