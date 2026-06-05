@@ -1,4 +1,3 @@
-import logging
 import threading
 
 from loguru import logger
@@ -11,9 +10,6 @@ from src.clients.bot_client import BotClient
 from src.services.intent_graph import graph as intent_graph
 from src.services.language_monitor import language_monitor
 from src.services.sentiment_monitor import sentiment_monitor
-
-
-sentiment_logger = logging.getLogger("sentiment_monitoring")
 
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
@@ -94,8 +90,8 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         with self._escalation_lock:
             escalated_language = self._escalated_user_languages.get(user_id)
         if escalated_language is not None:
-            sentiment_logger.warning(
-                "Conversation already escalated. user_id=%s, content_length=%d",
+            logger.warning(
+                "Conversation already escalated. user_id={}, content_length={}",
                 user_id,
                 len(content),
             )
@@ -109,8 +105,8 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         if sentiment_result.should_escalate:
             with self._escalation_lock:
                 self._escalated_user_languages[user_id] = sentiment_result.language
-            sentiment_logger.warning(
-                "Sentiment escalation triggered. user_id=%s, category=%s, source=%s, language=%s, reason=%s, content_length=%d",
+            logger.warning(
+                "Sentiment escalation triggered. user_id={}, category={}, source={}, language={}, reason={}, content_length={}",
                 user_id,
                 sentiment_result.category.value,
                 sentiment_result.source.value,

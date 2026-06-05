@@ -1,5 +1,4 @@
 from concurrent import futures
-import logging
 
 import grpc
 from grpc_reflection.v1alpha import reflection
@@ -13,10 +12,6 @@ from src.services.agent_service import AgentService
 
 def run_server() -> None:
     """Start and run the gRPC server."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    )
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
 
     bot_client = BotClient(env["BOT_SERVICE_ADDR"])
