@@ -61,18 +61,21 @@ class SentimentMonitorTests(unittest.TestCase):
         self.assertEqual(result.language, "english")
         self.assertEqual(len(llm.calls), 1)
 
-    def test_depression_medication_booking_context_is_safe_without_llm(self):
+    def test_depression_medication_booking_context_is_safe_via_llm(self):
+        # Fail-safe: a benign booking that mentions a diagnosis/medication is
+        # deferred to the LLM (no keyword short-circuit). A correctly behaving
+        # classifier returns safe, per the instruction in _CLASSIFIER_PROMPT not
+        # to escalate purely because a condition or medication is mentioned.
         llm = FakeLlm(
-            '{"category":"distress","language":"english","reason":"mentions depression"}',
+            '{"category":"safe","language":"english","reason":"routine booking"}',
         )
         result = SentimentMonitor(llm).evaluate(
             "I need to book a short appoinment to refill my depression medication",
         )
 
         self.assertEqual(result.category, SentimentCategory.SAFE)
-        self.assertEqual(result.source, DetectionSource.RULES)
-        self.assertEqual(result.reason, "clinical booking or medication context")
-        self.assertEqual(llm.calls, [])
+        self.assertEqual(result.source, DetectionSource.LLM)
+        self.assertEqual(len(llm.calls), 1)
 
     def test_hostile_doctor_booking_context_uses_llm_and_escalates(self):
         llm = FakeLlm(

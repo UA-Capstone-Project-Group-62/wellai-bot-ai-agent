@@ -1,4 +1,5 @@
 import logging
+import threading
 
 from loguru import logger
 import grpc
@@ -19,6 +20,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
     def __init__(self, bot_client: BotClient):
         self.bot_client = bot_client
         self._escalated_user_languages: dict[str, str] = {}
+        self._escalation_lock = threading.Lock()
 
     def _fetch_history(self, user_id: str) -> str:
         """Fetch conversation history from the bot service via GetMessages."""
@@ -89,31 +91,32 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             len(content),
         )
 
-        if user_id in self._escalated_user_languages:
+        with self._escalation_lock:
+            escalated_language = self._escalated_user_languages.get(user_id)
+        if escalated_language is not None:
             sentiment_logger.warning(
-                "Conversation already escalated. user_id=%s, trigger_message=%s",
+                "Conversation already escalated. user_id=%s, content_length=%d",
                 user_id,
-                content,
+                len(content),
             )
             return self._send_reply(
                 user_id,
-                sentiment_monitor.escalation_reply(
-                    self._escalated_user_languages[user_id],
-                ),
+                sentiment_monitor.escalation_reply(escalated_language),
                 context,
             )
 
         sentiment_result = sentiment_monitor.evaluate(content)
         if sentiment_result.should_escalate:
-            self._escalated_user_languages[user_id] = sentiment_result.language
+            with self._escalation_lock:
+                self._escalated_user_languages[user_id] = sentiment_result.language
             sentiment_logger.warning(
-                "Sentiment escalation triggered. user_id=%s, category=%s, source=%s, language=%s, reason=%s, trigger_message=%s",
+                "Sentiment escalation triggered. user_id=%s, category=%s, source=%s, language=%s, reason=%s, content_length=%d",
                 user_id,
                 sentiment_result.category.value,
                 sentiment_result.source.value,
                 sentiment_result.language,
                 sentiment_result.reason,
-                content,
+                len(content),
             )
             escalation_reply = sentiment_monitor.escalation_reply(
                 sentiment_result.language,
@@ -123,11 +126,11 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         language_result = language_monitor.evaluate(content)
         if not language_result.is_supported:
             logger.info(
-                "Unsupported language detected. user_id={}, source={}, reason={}, trigger_message={}",
+                "Unsupported language detected. user_id={}, source={}, reason={}, content_length={}",
                 user_id,
                 language_result.source.value,
                 language_result.reason,
-                content,
+                len(content),
             )
             return self._send_reply(
                 user_id,

@@ -152,47 +152,6 @@ _RULES_BY_CATEGORY: dict[SentimentCategory, list[_Rule]] = {
     ],
 }
 
-_CLINICAL_BOOKING_MARKERS = [
-    "appointment",
-    "appoinment",
-    "appoint",
-    "book",
-    "booking",
-    "refill",
-    "prescription",
-    "medication",
-    "medicine",
-    "doctor",
-    "consultation",
-    "temu janji",
-    "ubat",
-    "konsultasi",
-    "预约",
-    "药",
-    "药物",
-    "处方",
-    "复诊",
-]
-
-_SEMANTIC_REVIEW_MARKERS = [
-    "make",
-    "force",
-    "harm",
-    "hurt",
-    "attack",
-    "threat",
-    "threaten",
-    "revenge",
-    "retaliate",
-    "punish",
-    "take his own medicine",
-    "take her own medicine",
-    "take their own medicine",
-    "teach him a lesson",
-    "teach her a lesson",
-    "teach them a lesson",
-]
-
 _ESCALATION_REPLIES = {
     "english": (
         "I recognise that you may be distressed. I have requested a human "
@@ -243,16 +202,13 @@ class SentimentMonitor:
         rule_result = self._evaluate_rules(content)
         if rule_result.should_escalate:
             return rule_result
-        if _is_clinical_booking_context(content):
-            if _needs_semantic_safety_review(content):
-                return self._evaluate_with_llm(content, language)
-            return SentimentResult(
-                category=SentimentCategory.SAFE,
-                source=DetectionSource.RULES,
-                reason="clinical booking or medication context",
-                language=language,
-            )
 
+        # Fail-safe: when no escalation rule fired we defer to the LLM rather
+        # than declaring SAFE on a keyword heuristic. Harmful intent (e.g.
+        # threats toward a doctor inside a booking request) is inherently
+        # semantic and cannot be enumerated as a blocklist, so the LLM is the
+        # authority. The classifier prompt is responsible for not escalating
+        # benign clinical/booking/medication messages.
         return self._evaluate_with_llm(content, language)
 
     def escalation_reply(self, language: str) -> str:
@@ -360,16 +316,6 @@ def _matches_rule(message: str, rule: _Rule) -> bool:
     phrase_pattern = r"\s+".join(phrase_parts)
     pattern = rf"(?<![a-z0-9_]){phrase_pattern}(?![a-z0-9_])"
     return re.search(pattern, normalized) is not None
-
-
-def _is_clinical_booking_context(message: str) -> bool:
-    normalized = re.sub(r"\s+", " ", message.lower())
-    return any(marker in normalized for marker in _CLINICAL_BOOKING_MARKERS)
-
-
-def _needs_semantic_safety_review(message: str) -> bool:
-    normalized = re.sub(r"\s+", " ", message.lower())
-    return any(marker in normalized for marker in _SEMANTIC_REVIEW_MARKERS)
 
 
 def _parse_llm_response(raw_content: str, fallback_language: str) -> SentimentResult:
