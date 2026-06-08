@@ -17,6 +17,7 @@ def run_server() -> None:
 
     bot_client = BotClient(env["BOT_SERVICE_ADDR"])
     scheduling_client = SchedulingClient(env["SCHEDULING_SERVICE_ADDR"])
+    
     agent_pb2_grpc.add_AgentServiceServicer_to_server(
         AgentService(bot_client, scheduling_client),
         server,
