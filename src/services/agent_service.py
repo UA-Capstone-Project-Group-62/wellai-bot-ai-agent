@@ -31,6 +31,21 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             max_tokens=500,
         )
 
+    def _parse_time_to_hhmm(self, time_str: str) -> str:
+        """Convert various time formats to HH:MM format."""
+        if not time_str:
+            return "09:00"
+        
+        time_str = time_str.strip().lower()
+        
+        try:
+            # Try parsing with dateutil parser (handles "4pm", "4:30pm", "13:00", etc.)
+            parsed_time = date_parser.parse(time_str, default=datetime.now())
+            return parsed_time.strftime("%H:%M")
+        except Exception as e:
+            logger.warning("Failed to parse time '{}': {}", time_str, e)
+            return "09:00"  # Default fallback
+
     def _extract_booking_details(self, conversation: str, user_message: str) -> dict:
         """Extract booking details from conversation using LLM."""
         extraction_prompt = f"""Extract booking details from the LATEST USER MESSAGE. Return a JSON object with these fields (use null for missing values):
@@ -328,8 +343,8 @@ Return ONLY valid JSON, no other text."""
                     details = self._extract_booking_details(full_conversation, content)
                     if details.get("preferred_date"):
                         # Attempt scheduling with extracted details
-                        # Use extracted time or default to 09:00
-                        time_str = details.get('preferred_time', '09:00')
+                        # Parse time to HH:MM format
+                        time_str = self._parse_time_to_hhmm(details.get('preferred_time'))
                         datetime_str = f"{details['preferred_date']}T{time_str}"
                         schedule_result = self._attempt_schedule_appointment(
                             user_id=user_id,
