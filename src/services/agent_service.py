@@ -342,8 +342,15 @@ Return ONLY valid JSON, no other text."""
         # --- Step 2: Handle scheduling intents ---
         try:
             if detected_intent in ["book_app", "cancel_app", "reschedule_app"]:
-                full_conversation = history_text + f"\nUser: {content}"
+                if self.scheduling_client is None:
+                    logger.warning(
+                        "Scheduling intent detected but scheduling client is not configured. user_id={}, intent={}",
+                        user_id,
+                        detected_intent,
+                    )
+                    return self._send_reply(user_id, ai_reply, context)
 
+                full_conversation = history_text + f"\nUser: {content}"
                 if detected_intent == "book_app":
                     # Try to extract booking details and schedule
                     details = self._extract_booking_details(full_conversation, content)
