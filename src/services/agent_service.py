@@ -402,7 +402,8 @@ Return ONLY valid JSON, no other text."""
                         # First cancel old appointment, then create new one
                         cancel_result = self._cancel_appointment(user_id)
                         if cancel_result["success"]:
-                            datetime_str = f"{details['preferred_date']}T{details.get('preferred_time', '09:00')}"
+                            time_str = self._parse_time_to_hhmm(details.get("preferred_time"))
+                            datetime_str = f"{details['preferred_date']}T{time_str}"
                             schedule_result = self._attempt_schedule_appointment(
                                 user_id=user_id,
                                 user_name=details.get("user_name"),
