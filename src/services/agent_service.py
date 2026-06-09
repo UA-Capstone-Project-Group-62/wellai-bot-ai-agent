@@ -69,6 +69,12 @@ Latest message:
 
 Return ONLY valid JSON, no other text."""
 
+        if self._llm is None:
+            self._llm = ChatGroq(
+                model="llama-3.3-70b-versatile",
+                temperature=0.1,
+                max_tokens=500,
+            )
         response = self._llm.invoke([
             SystemMessage(content="You are a booking details extractor. Extract structured information from the LATEST USER MESSAGE ONLY. Do not use information from older messages."),
             HumanMessage(content=extraction_prompt),
@@ -135,7 +141,7 @@ Return ONLY valid JSON, no other text."""
             timestamp.FromDatetime(dt)
 
             # Calculate end time (assume 1 hour appointment)
-            end_dt = datetime(dt.year, dt.month, dt.day, dt.hour + 1, dt.minute)
+            end_dt = dt + timedelta(hours=1)
             end_timestamp = Timestamp()
             end_timestamp.FromDatetime(end_dt)
 
@@ -355,8 +361,15 @@ Return ONLY valid JSON, no other text."""
         # --- Step 2: Handle scheduling intents ---
         try:
             if detected_intent in ["book_app", "cancel_app", "reschedule_app"]:
-                full_conversation = history_text + f"\nUser: {content}"
+                if self.scheduling_client is None:
+                    logger.warning(
+                        "Scheduling intent detected but scheduling client is not configured. user_id={}, intent={}",
+                        user_id,
+                        detected_intent,
+                    )
+                    return self._send_reply(user_id, ai_reply, context)
 
+                full_conversation = history_text + f"\nUser: {content}"
                 if detected_intent == "book_app":
                     # Try to extract booking details and schedule
                     details = self._extract_booking_details(full_conversation, content)
@@ -408,14 +421,8 @@ Return ONLY valid JSON, no other text."""
                         # First cancel old appointment, then create new one
                         cancel_result = self._cancel_appointment(user_id)
                         if cancel_result["success"]:
-                            time_str = self._parse_time_to_hhmm(
-                                details.get("preferred_time")
-                            )
-
-                            datetime_str = (
-                                f"{details['preferred_date']}T{time_str}"
-                            )
-
+                            time_str = self._parse_time_to_hhmm(details.get("preferred_time"))
+                            datetime_str = f"{details['preferred_date']}T{time_str}"
                             schedule_result = self._attempt_schedule_appointment(
                                 user_id=user_id,
                                 user_name=details.get("user_name"),
