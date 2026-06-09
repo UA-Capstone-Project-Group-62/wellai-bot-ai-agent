@@ -77,7 +77,7 @@ uv run mocks/mock_bot_service.py
 uv run main.py
 ```
 
-**Terminal 3: Run the interactive client**
+**Terminal 4: Run the interactive client**
 ```sh
 uv run mocks/interactive_client_with_response.py localhost:50051 localhost:50052
 ```
