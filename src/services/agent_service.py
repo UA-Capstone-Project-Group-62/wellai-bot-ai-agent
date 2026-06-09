@@ -64,6 +64,12 @@ Latest message:
 
 Return ONLY valid JSON, no other text."""
 
+        if self._llm is None:
+            self._llm = ChatGroq(
+                model="llama-3.3-70b-versatile",
+                temperature=0.1,
+                max_tokens=500,
+            )
         response = self._llm.invoke([
             SystemMessage(content="You are a booking details extractor. Extract structured information from the LATEST USER MESSAGE ONLY. Do not use information from older messages."),
             HumanMessage(content=extraction_prompt),
