@@ -64,7 +64,10 @@ The server exposes an `AgentService` gRPC service on port `50051`. You can talk 
 
 An interactive client is included so you can type messages and see AI replies in real time. You need **3 terminals** running:
 
-**Terminal 1: Start the mock BotService**
+**Terminal 1: Start the mock SchedulingService**
+Run: `uv run mocks/mock_scheduler_service.py 50053`
+
+**Terminal 2: Start the mock BotService**
 ```sh
 uv run mocks/mock_bot_service.py
 ```
