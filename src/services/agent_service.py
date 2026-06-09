@@ -18,9 +18,14 @@ from src.services.intent_graph import graph as intent_graph
 from src.services.language_monitor import language_monitor
 from src.services.sentiment_monitor import sentiment_monitor
 
+from typing import Optional
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
-    def __init__(self, bot_client: BotClient, scheduling_client: SchedulingClient):
+    def __init__(
+        self,
+        bot_client: BotClient,
+        scheduling_client: Optional[SchedulingClient] = None,
+    ):
         self.bot_client = bot_client
         self.scheduling_client = scheduling_client
         self._escalated_user_languages: dict[str, str] = {}
@@ -116,6 +121,13 @@ Return ONLY valid JSON, no other text."""
         start_time_str: str,
     ) -> dict:
         """Attempt to schedule an appointment with the scheduling service."""
+
+        if self.scheduling_client is None:
+            return {
+                "success": False,
+                "message": "Scheduling service unavailable",
+            }
+
         try:
             # Parse ISO datetime string to Timestamp
             dt = datetime.fromisoformat(start_time_str)
@@ -164,6 +176,13 @@ Return ONLY valid JSON, no other text."""
 
     def _cancel_appointment(self, user_id: str) -> dict:
         """Cancel an appointment for the user."""
+
+        if self.scheduling_client is None:
+            return {
+                "success": False,
+                "message": "Scheduling service unavailable",
+            }
+
         try:
             response = self.scheduling_client.cancel(user_id)
             logger.info(
@@ -389,7 +408,14 @@ Return ONLY valid JSON, no other text."""
                         # First cancel old appointment, then create new one
                         cancel_result = self._cancel_appointment(user_id)
                         if cancel_result["success"]:
-                            datetime_str = f"{details['preferred_date']}T{details.get('preferred_time', '09:00')}"
+                            time_str = self._parse_time_to_hhmm(
+                                details.get("preferred_time")
+                            )
+
+                            datetime_str = (
+                                f"{details['preferred_date']}T{time_str}"
+                            )
+
                             schedule_result = self._attempt_schedule_appointment(
                                 user_id=user_id,
                                 user_name=details.get("user_name"),
