@@ -129,7 +129,7 @@ Return ONLY valid JSON, no other text."""
             timestamp.FromDatetime(dt)
 
             # Calculate end time (assume 1 hour appointment)
-            end_dt = datetime(dt.year, dt.month, dt.day, dt.hour + 1, dt.minute)
+            end_dt = dt + timedelta(hours=1)
             end_timestamp = Timestamp()
             end_timestamp.FromDatetime(end_dt)
 
