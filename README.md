@@ -72,7 +72,7 @@ Run: `uv run mocks/mock_scheduler_service.py 50053`
 uv run mocks/mock_bot_service.py
 ```
 
-**Terminal 2: Start the AI Agent**
+**Terminal 3: Start the AI Agent**
 ```sh
 uv run main.py
 ```
