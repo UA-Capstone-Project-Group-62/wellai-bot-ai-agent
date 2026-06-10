@@ -6,6 +6,7 @@ from loguru import logger
 from proto.agent import agent_pb2, agent_pb2_grpc
 
 from src.clients.bot_client import BotClient
+from src.clients.scheduling_client import SchedulingClient
 from src.env import env
 from src.services.agent_service import AgentService
 
@@ -15,8 +16,9 @@ def run_server() -> None:
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
 
     bot_client = BotClient(env["BOT_SERVICE_ADDR"])
+    scheduling_client = SchedulingClient(env["SCHEDULING_SERVICE_ADDR"])
     agent_pb2_grpc.add_AgentServiceServicer_to_server(
-        AgentService(bot_client),
+        AgentService(bot_client, scheduling_client),
         server,
     )
 
@@ -35,3 +37,4 @@ def run_server() -> None:
         server.wait_for_termination()
     finally:
         bot_client.close()
+        scheduling_client.close()

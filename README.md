@@ -62,29 +62,43 @@ The server exposes an `AgentService` gRPC service on port `50051`. You can talk 
 
 ### Interactive chat
 
-An interactive client is included so you can type messages and see AI replies in real time:
+An interactive client is included so you can type messages and see AI replies in real time. You need **3 terminals** running:
 
+**Terminal 1: Start the mock SchedulingService**
+Run: `uv run mocks/mock_scheduler_service.py 50053`
+
+**Terminal 2: Start the mock BotService**
 ```sh
-uv run mocks/interactive_client.py localhost:50051
+uv run mocks/mock_bot_service.py
+```
+
+**Terminal 3: Start the AI Agent**
+```sh
+uv run main.py
+```
+
+**Terminal 4: Run the interactive client**
+```sh
+uv run mocks/interactive_client_with_response.py localhost:50051 localhost:50052
 ```
 
 Then just type your message and press Enter:
 
 ```
 > Hello, I want to book an appointment
-Bot: Hello! I'd be happy to help you book an appointment...
+🤖 AI: Hello! I'd be happy to help you book an appointment...
 
 > I prefer morning slots
-Bot: Great, we have several morning slots available...
+🤖 AI: Great, we have several morning slots available...
 
 > quit
 Goodbye!
 ```
 
-You can also pass a custom `user_id` as the second argument:
+You can also pass a custom `user_id` as the third argument:
 
 ```sh
-uv run mocks/interactive_client.py localhost:50051 eliza
+uv run mocks/interactive_client_with_response.py localhost:50051 localhost:50052 eliza
 ```
 
 ### Automated test client
