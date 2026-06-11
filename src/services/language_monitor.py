@@ -11,6 +11,7 @@ from langchain_groq import ChatGroq
 from loguru import logger
 
 
+
 class LanguageCategory(str, Enum):
     ENGLISH = "english"
     MALAY = "malay"
@@ -191,7 +192,7 @@ class LanguageMonitor:
     def _get_llm(self):
         if self._llm_client is None:
             self._llm_client = ChatGroq(
-                model="qwen/qwen3-32b",
+                model="llama-3.1-8b-instant",
                 temperature=0,
                 max_tokens=80,
             )

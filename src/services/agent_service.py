@@ -1,16 +1,17 @@
-import threading
 import json
 import re
-from datetime import datetime, timedelta
-from dateutil import parser as date_parser
+import threading
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-from loguru import logger
 import grpc
+from dateutil import parser as date_parser
+from google.protobuf.timestamp_pb2 import Timestamp
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
+from loguru import logger
 from proto.agent import agent_pb2_grpc
 from proto.common import common_pb2
-from google.protobuf.timestamp_pb2 import Timestamp
 
 from src.clients.bot_client import BotClient
 from src.clients.scheduling_client import SchedulingClient
@@ -18,7 +19,6 @@ from src.services.intent_graph import graph as intent_graph
 from src.services.language_monitor import language_monitor
 from src.services.sentiment_monitor import sentiment_monitor
 
-from typing import Optional
 
 class AgentService(agent_pb2_grpc.AgentServiceServicer):
     def __init__(
@@ -31,7 +31,7 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         self._escalated_user_languages: dict[str, str] = {}
         self._escalation_lock = threading.Lock()
         self._llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
             temperature=0.1,
             max_tokens=500,
         )
@@ -62,24 +62,31 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             clinics = []
             for c in response.clinics:
                 info = json.loads(c.clinic_info)
-                clinics.append({
-                    "id": c.clinic_id,
-                    "name": info.get("name", c.clinic_id),
-                    "address": info.get("address", ""),
-                    "phone": info.get("phone", ""),
-                    "email": info.get("email", ""),
-                })
+                clinics.append(
+                    {
+                        "id": c.clinic_id,
+                        "name": info.get("name", c.clinic_id),
+                        "address": info.get("address", ""),
+                        "phone": info.get("phone", ""),
+                        "email": info.get("email", ""),
+                    }
+                )
             return clinics
         except Exception as e:
             logger.warning("Failed to fetch clinics: {}", e)
             return []
 
-    def _extract_booking_details(self, conversation: str, user_message: str, clinics: list[dict]) -> dict:
+    def _extract_booking_details(
+        self, conversation: str, user_message: str, clinics: list[dict]
+    ) -> dict:
         """Extract booking details from conversation using LLM."""
-        clinic_list_text = "\n".join(f'- id: "{c["id"]}", name: "{c["name"]}"' for c in clinics)
+        clinic_list_text = "\n".join(
+            f'- id: "{c["id"]}", name: "{c["name"]}"' for c in clinics
+        )
         default_clinic_instruction = (
             f'if not mentioned, use the first clinic id: "{clinics[0]["id"]}"'
-            if clinics else "if not mentioned, use null"
+            if clinics
+            else "if not mentioned, use null"
         )
 
         extraction_prompt = f"""Extract booking details from the LATEST USER MESSAGE. Return a JSON object with these fields (use null for missing values):
@@ -101,10 +108,14 @@ Latest message:
 
 Return ONLY valid JSON, no other text."""
 
-        response = self._llm.invoke([
-            SystemMessage(content="You are a booking details extractor. Extract structured information from the LATEST USER MESSAGE ONLY. Do not use information from older messages."),
-            HumanMessage(content=extraction_prompt),
-        ])
+        response = self._llm.invoke(
+            [
+                SystemMessage(
+                    content="You are a booking details extractor. Extract structured information from the LATEST USER MESSAGE ONLY. Do not use information from older messages."
+                ),
+                HumanMessage(content=extraction_prompt),
+            ]
+        )
 
         try:
             # Strip markdown code blocks if present
@@ -144,7 +155,9 @@ Return ONLY valid JSON, no other text."""
             logger.warning("Failed to parse extraction response: {}", response.content)
             return {}
 
-    def _query_available_slots(self, clinic_id: str, target_date: str | None = None, days: int = 7) -> list[dict]:
+    def _query_available_slots(
+        self, clinic_id: str, target_date: str | None = None, days: int = 7
+    ) -> list[dict]:
         """Query available time slots for a clinic.
 
         Returns list of {"date": "YYYY-MM-DD", "time": "HH:MM"}.
@@ -153,13 +166,18 @@ Return ONLY valid JSON, no other text."""
         if self.scheduling_client is None:
             return []
         try:
-            response = self.scheduling_client.query_available_slots(clinic_id, days=days)
+            response = self.scheduling_client.query_available_slots(
+                clinic_id, days=days
+            )
             slots = []
             for slot in response.available_slots:
-                start_dt = slot.start_time.ToDatetime()
+                # ToDatetime() returns naive UTC — make it aware then convert to local time
+                start_dt = slot.start_time.ToDatetime(tzinfo=timezone.utc).astimezone()
                 slot_date = start_dt.strftime("%Y-%m-%d")
                 if target_date is None or slot_date == target_date:
-                    slots.append({"date": slot_date, "time": start_dt.strftime("%H:%M")})
+                    slots.append(
+                        {"date": slot_date, "time": start_dt.strftime("%H:%M")}
+                    )
             return slots
         except Exception as e:
             logger.warning("Failed to query available slots: {}", e)
@@ -171,20 +189,30 @@ Return ONLY valid JSON, no other text."""
             return None
         if len(clinics) == 1:
             return clinics[0]["id"]
-        clinic_list = "\n".join(f'- id: "{c["id"]}", name: "{c["name"]}"' for c in clinics)
+        clinic_list = "\n".join(
+            f'- id: "{c["id"]}", name: "{c["name"]}"' for c in clinics
+        )
         prompt = f"""Given this message: "{message}"
 
 And these available clinics:
 {clinic_list}
 
 Which clinic is the user referring to? Return ONLY the clinic id exactly as listed, or "unknown" if unclear."""
-        response = self._llm.invoke([
-            SystemMessage(content="You are a clinic name resolver. Return only the clinic id or 'unknown'."),
-            HumanMessage(content=prompt),
-        ])
+        response = self._llm.invoke(
+            [
+                SystemMessage(
+                    content="You are a clinic name resolver. Return only the clinic id or 'unknown'."
+                ),
+                HumanMessage(content=prompt),
+            ]
+        )
         resolved = response.content.strip().strip('"')
         valid_ids = {c["id"] for c in clinics}
-        return resolved if resolved in valid_ids else (clinics[0]["id"] if clinics else None)
+        return (
+            resolved
+            if resolved in valid_ids
+            else (clinics[0]["id"] if clinics else None)
+        )
 
     def _attempt_schedule_appointment(
         self,
@@ -288,7 +316,7 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
     def _fetch_history(self, user_id: str) -> str:
         """Fetch conversation history from the bot service via GetMessages."""
         try:
-            response = self.bot_client.get_messages(user_id, count=50)
+            response = self.bot_client.get_messages(user_id, count=8)
             if not response.messages:
                 return ""
             lines = []
@@ -405,11 +433,13 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
 
         # --- Step 1: Classify intent and generate AI reply ---
         try:
-            intent_result = intent_graph.invoke({
-                "messages": [HumanMessage(content=content)],
-                "history": history_text,
-                "intent": "unrelated_to_your_job",
-            })
+            intent_result = intent_graph.invoke(
+                {
+                    "messages": [HumanMessage(content=content)],
+                    "history": history_text,
+                    "intent": "unrelated_to_your_job",
+                }
+            )
             detected_intent = intent_result.get("intent", "unrelated_to_your_job")
             ai_reply = intent_result["messages"][-1].content.strip()
 
@@ -423,7 +453,7 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
 
             return common_pb2.Response(
                 success=False,
-                message="Sorry, I'm having trouble right now. Please try again.",
+                message="Loading... Please wait.",
             )
 
         # --- Step 2: Handle scheduling intents ---
@@ -449,16 +479,28 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                 clinic_id = self._resolve_clinic_id(content, clinics)
                 if clinic_id:
                     available = self._query_available_slots(clinic_id, days=7)
-                    clinic_name = next((c["name"] for c in clinics if c["id"] == clinic_id), clinic_id)
+                    clinic_name = next(
+                        (c["name"] for c in clinics if c["id"] == clinic_id), clinic_id
+                    )
                     if available:
                         by_date: dict[str, list[str]] = {}
                         for s in available:
                             by_date.setdefault(s["date"], []).append(s["time"])
-                        lines = [f"*{date}*: " + ", ".join(times) for date, times in sorted(by_date.items())]
-                        ai_reply += f"\n\nAvailable slots at *{clinic_name}* (next 7 days):\n" + "\n".join(lines)
+                        lines = [
+                            f"*{date}*: " + ", ".join(times)
+                            for date, times in sorted(by_date.items())
+                        ]
+                        ai_reply += (
+                            f"\n\nAvailable slots at *{clinic_name}* (next 7 days):\n"
+                            + "\n".join(lines)
+                        )
                     else:
                         ai_reply += f"\n\nThere are no available slots at *{clinic_name}* in the next 7 days."
-                    logger.info("Queried availability for clinic {} for user {}", clinic_id, user_id)
+                    logger.info(
+                        "Queried availability for clinic {} for user {}",
+                        clinic_id,
+                        user_id,
+                    )
                 else:
                     ai_reply += "\n\nI couldn't determine which clinic you meant. Please specify a clinic name."
 
@@ -474,17 +516,29 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                 full_conversation = history_text + f"\nUser: {content}"
                 clinics = self._fetch_clinics()
                 if detected_intent == "book_app":
-                    details = self._extract_booking_details(full_conversation, content, clinics)
-                    if details.get("preferred_date") and not details.get("preferred_time"):
+                    details = self._extract_booking_details(
+                        full_conversation, content, clinics
+                    )
+                    if details.get("preferred_date") and not details.get(
+                        "preferred_time"
+                    ):
                         # Date known but no time — show available slots so user can pick
-                        available = self._query_available_slots(details["clinic_id"], target_date=details["preferred_date"])
+                        available = self._query_available_slots(
+                            details["clinic_id"], target_date=details["preferred_date"]
+                        )
                         if available:
                             slots_text = "\n".join(f"• {s['time']}" for s in available)
                             ai_reply += f"\n\nHere are the available slots on {details['preferred_date']}:\n{slots_text}\n\nWhich time would you prefer?"
                         else:
                             ai_reply += f"\n\nUnfortunately there are no available slots on {details['preferred_date']}. Would you like to try a different date?"
-                        logger.info("Showed available slots for user {} on {}", user_id, details["preferred_date"])
-                    elif details.get("preferred_date") and details.get("preferred_time"):
+                        logger.info(
+                            "Showed available slots for user {} on {}",
+                            user_id,
+                            details["preferred_date"],
+                        )
+                    elif details.get("preferred_date") and details.get(
+                        "preferred_time"
+                    ):
                         time_str = self._parse_time_to_hhmm(details["preferred_time"])
                         datetime_str = f"{details['preferred_date']}T{time_str}"
                         schedule_result = self._attempt_schedule_appointment(
@@ -495,18 +549,29 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                         )
                         if schedule_result["success"]:
                             ai_reply += f"\n\n✅ Appointment confirmed! {schedule_result['message']}"
-                            logger.info("Appointment scheduled successfully for user {}", user_id)
+                            logger.info(
+                                "Appointment scheduled successfully for user {}",
+                                user_id,
+                            )
                         else:
                             ai_reply += f"\n\n⚠️ Could not complete booking: {schedule_result['message']}. Please try again or contact us directly."
-                            logger.warning("Scheduling failed for user {}: {}", user_id, schedule_result["message"])
+                            logger.warning(
+                                "Scheduling failed for user {}: {}",
+                                user_id,
+                                schedule_result["message"],
+                            )
                     else:
-                        logger.info("Incomplete booking details. Waiting for more information from user.")
+                        logger.info(
+                            "Incomplete booking details. Waiting for more information from user."
+                        )
 
                 elif detected_intent == "cancel_app":
                     # Try to cancel appointment
                     cancel_result = self._cancel_appointment(user_id)
                     if cancel_result["success"]:
-                        ai_reply += f"\n\n✅ Appointment cancelled! {cancel_result['message']}"
+                        ai_reply += (
+                            f"\n\n✅ Appointment cancelled! {cancel_result['message']}"
+                        )
                         logger.info("Appointment cancelled for user {}", user_id)
                     else:
                         ai_reply += f"\n\n⚠️ Could not cancel appointment: {cancel_result['message']}"
@@ -517,21 +582,39 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                         )
 
                 elif detected_intent == "reschedule_app":
-                    details = self._extract_booking_details(full_conversation, content, clinics)
-                    if details.get("clinic_id") and details.get("preferred_date") and not details.get("preferred_time"):
+                    details = self._extract_booking_details(
+                        full_conversation, content, clinics
+                    )
+                    if (
+                        details.get("clinic_id")
+                        and details.get("preferred_date")
+                        and not details.get("preferred_time")
+                    ):
                         # Date known but no time — show available slots
-                        available = self._query_available_slots(details["clinic_id"], target_date=details["preferred_date"])
+                        available = self._query_available_slots(
+                            details["clinic_id"], target_date=details["preferred_date"]
+                        )
                         if available:
                             slots_text = "\n".join(f"• {s['time']}" for s in available)
                             ai_reply += f"\n\nHere are the available slots on {details['preferred_date']}:\n{slots_text}\n\nWhich time would you prefer for rescheduling?"
                         else:
                             ai_reply += f"\n\nUnfortunately there are no available slots on {details['preferred_date']}. Would you like to try a different date?"
-                        logger.info("Showed available slots for reschedule user {} on {}", user_id, details["preferred_date"])
-                    elif details.get("clinic_id") and details.get("preferred_date") and details.get("preferred_time"):
+                        logger.info(
+                            "Showed available slots for reschedule user {} on {}",
+                            user_id,
+                            details["preferred_date"],
+                        )
+                    elif (
+                        details.get("clinic_id")
+                        and details.get("preferred_date")
+                        and details.get("preferred_time")
+                    ):
                         # First cancel old appointment, then create new one
                         cancel_result = self._cancel_appointment(user_id)
                         if cancel_result["success"]:
-                            time_str = self._parse_time_to_hhmm(details.get("preferred_time"))
+                            time_str = self._parse_time_to_hhmm(
+                                details.get("preferred_time")
+                            )
                             datetime_str = f"{details['preferred_date']}T{time_str}"
                             schedule_result = self._attempt_schedule_appointment(
                                 user_id=user_id,
@@ -542,13 +625,19 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
 
                             if schedule_result["success"]:
                                 ai_reply += f"\n\n✅ Appointment rescheduled! {schedule_result['message']}"
-                                logger.info("Appointment rescheduled for user {}", user_id)
+                                logger.info(
+                                    "Appointment rescheduled for user {}", user_id
+                                )
                             else:
-                                ai_reply += f"\n\n⚠️ Failed to reschedule. Please try again."
+                                ai_reply += (
+                                    "\n\n⚠️ Failed to reschedule. Please try again."
+                                )
                         else:
                             ai_reply += f"\n\n⚠️ Could not process rescheduling: {cancel_result['message']}"
                     else:
-                        logger.info("Incomplete reschedule details. Waiting for more information from user.")
+                        logger.info(
+                            "Incomplete reschedule details. Waiting for more information from user."
+                        )
         except Exception as e:
             logger.error("Error handling scheduling intent: {}", e)
             # Continue with just the AI reply, don't fail
