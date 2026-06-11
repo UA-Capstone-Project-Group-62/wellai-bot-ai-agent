@@ -89,16 +89,16 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
             else "if not mentioned, use null"
         )
 
-        extraction_prompt = f"""Extract booking details from the LATEST USER MESSAGE. Return a JSON object with these fields (use null for missing values):
+        extraction_prompt = f"""Extract booking details for the current booking request. Return a JSON object with these fields (use null for missing values):
 - clinic_id: must be one of the clinic IDs listed below ({default_clinic_instruction})
-- preferred_date: Relative date expression from latest message (e.g., "tomorrow", "today", "next week", or YYYY-MM-DD if specific date mentioned) - null if not mentioned
-- preferred_time: Time in HH:MM format (e.g., "13:00", "1pm") or null if not mentioned
-- user_name: patient name or null
+- preferred_date: Relative date expression (e.g., "tomorrow", "today", "next week", or YYYY-MM-DD) - check latest message first, then history - null if not found
+- preferred_time: Time in HH:MM format (e.g., "13:00", "1pm") - check latest message first, then history - null if not found
+- user_name: patient name - check latest message first, then conversation history (the user may have given their name in a previous reply) - null if not found anywhere
 
 Available clinics:
 {clinic_list_text}
 
-IMPORTANT: Extract ONLY from the latest user message, NOT from conversation history. Use relative date expressions as-is (e.g., "tomorrow" not a specific date). The clinic_id must exactly match one of the IDs listed above.
+IMPORTANT: For clinic_id, preferred_date, and preferred_time — prefer the latest message but fall back to history if not in the latest message. For user_name — check both latest message and history. Use relative date expressions as-is. The clinic_id must exactly match one of the IDs listed above.
 
 Conversation history:
 {conversation}
@@ -536,45 +536,32 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                             user_id,
                             details["preferred_date"],
                         )
-                    elif details.get("preferred_date") and details.get(
-                        "preferred_time"
-                    ):
+                    elif details.get("preferred_date") and details.get("preferred_time") and details.get("user_name"):
                         time_str = self._parse_time_to_hhmm(details["preferred_time"])
                         datetime_str = f"{details['preferred_date']}T{time_str}"
                         schedule_result = self._attempt_schedule_appointment(
                             user_id=user_id,
-                            user_name=details.get("user_name"),
+                            user_name=details["user_name"],
                             clinic_id=details["clinic_id"],
                             start_time_str=datetime_str,
                         )
                         if schedule_result["success"]:
-                            ai_reply += f"\n\n✅ Appointment confirmed! {schedule_result['message']}"
-                            logger.info(
-                                "Appointment scheduled successfully for user {}",
-                                user_id,
-                            )
+                            ai_reply = f"✅ Appointment confirmed! {schedule_result['message']}"
+                            logger.info("Appointment scheduled successfully for user {}", user_id)
                         else:
                             ai_reply += f"\n\n⚠️ Could not complete booking: {schedule_result['message']}. Please try again or contact us directly."
-                            logger.warning(
-                                "Scheduling failed for user {}: {}",
-                                user_id,
-                                schedule_result["message"],
-                            )
+                            logger.warning("Scheduling failed for user {}: {}", user_id, schedule_result["message"])
                     else:
-                        logger.info(
-                            "Incomplete booking details. Waiting for more information from user."
-                        )
+                        logger.info("Incomplete booking details. Waiting for more information from user.")
 
                 elif detected_intent == "cancel_app":
                     # Try to cancel appointment
                     cancel_result = self._cancel_appointment(user_id)
                     if cancel_result["success"]:
-                        ai_reply += (
-                            f"\n\n✅ Appointment cancelled! {cancel_result['message']}"
-                        )
+                        ai_reply = f"✅ Appointment cancelled! {cancel_result['message']}"
                         logger.info("Appointment cancelled for user {}", user_id)
                     else:
-                        ai_reply += f"\n\n⚠️ Could not cancel appointment: {cancel_result['message']}"
+                        ai_reply = f"⚠️ Could not cancel appointment: {cancel_result['message']}"
                         logger.warning(
                             "Cancellation failed for user {}: {}",
                             user_id,
@@ -608,6 +595,7 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                         details.get("clinic_id")
                         and details.get("preferred_date")
                         and details.get("preferred_time")
+                        and details.get("user_name")
                     ):
                         # First cancel old appointment, then create new one
                         cancel_result = self._cancel_appointment(user_id)
@@ -624,7 +612,7 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                             )
 
                             if schedule_result["success"]:
-                                ai_reply += f"\n\n✅ Appointment rescheduled! {schedule_result['message']}"
+                                ai_reply = f"✅ Appointment rescheduled! {schedule_result['message']}"
                                 logger.info(
                                     "Appointment rescheduled for user {}", user_id
                                 )

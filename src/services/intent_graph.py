@@ -193,7 +193,7 @@ Please classify the user message into one of these intents ONLY: {POSSIBLE_INTEN
 
 IMPORTANT RULES:
 - Classify based on the USER'S INTENT/ACTION, not the language they use.
-- "book_app" = User explicitly wants to CREATE/MAKE a new appointment (e.g., "I want to book", "I need an appointment", "Saya nak buat temu janji", "我想预约", "Saya mahu temujanji")
+- "book_app" = User explicitly wants to CREATE/MAKE a new appointment, OR the conversation history shows the assistant asked for the user's name or missing booking details and the user is providing that information (e.g., "I want to book", "I need an appointment", replying with just a name like "John Smith" when the assistant asked for a name, "Saya nak buat temu janji", "我想预约")
 - "cancel_app" = User wants to CANCEL an existing appointment (e.g., "I want to cancel", "Batal temu janji", "取消预约")
 - "reschedule_app" = User wants to CHANGE/MOVE an existing appointment time/date (e.g., "Can I reschedule", "Boleh saya tukar tarikh temu janji", "我可以改预约吗", "tukar jadual", "ubah masa")
 - "list_clinics" = User wants to see the list of available clinics or get info/details about a specific clinic (e.g., "What clinics are available?", "List all clinics", "Tell me about clinic 1", "What's the address of the downtown clinic", "Klinik apa yang ada", "有哪些诊所")
@@ -235,9 +235,11 @@ EXAMPLES:
 
 Return ONLY the intent label, nothing else."""
 
+    history = state.get("history", "")
+    history_section = f"\nConversation history:\n{history}\n" if history else ""
     response = _invoke_with_retry([
         SystemMessage(content=system_content),
-        HumanMessage(content=f"Message: {user_message}"),
+        HumanMessage(content=f"{history_section}Message to classify: {user_message}"),
     ])
     raw_intent = response.content.strip()
     intent = _parse_intent(raw_intent)
@@ -305,7 +307,9 @@ You are helping the user book an appointment.
 
 {history_section}
 
-Respond as a helpful booking assistant. If the user has already provided information (like preferred time or date), acknowledge it and ask for any missing details. Do not ask for information they have already given.
+Respond as a helpful booking assistant. Acknowledge what the user has said and ask for any missing details (date, time, name). Do not ask for information they have already given.
+
+IMPORTANT: Never comment on whether a time slot is available or unavailable. Never say a slot is taken, unavailable, or suggest alternatives based on availability. The system handles availability checks separately — your job is only to collect the booking details from the user.
 
 {_language_instruction(user_message)}"""
 
@@ -329,7 +333,7 @@ You are helping the user cancel an appointment.
 
 {history_section}
 
-Respond as a helpful booking assistant. Acknowledge any details they have provided and ask for only the missing information needed to process the cancellation.
+Write a single short sentence acknowledging that you are processing their cancellation. Do not ask for any details — the system handles the cancellation automatically. Do not mention reference numbers, dates, or times.
 
 {_language_instruction(user_message)}"""
 
