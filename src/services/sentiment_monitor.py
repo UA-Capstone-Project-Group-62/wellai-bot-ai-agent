@@ -280,7 +280,7 @@ class SentimentMonitor:
             self._llm_client = ChatGroq(
                 model="qwen/qwen3-32b",
                 temperature=0,
-                max_tokens=120,
+                max_tokens=500,
             )
         return self._llm_client
 
@@ -346,6 +346,10 @@ def _parse_llm_response(raw_content: str, fallback_language: str) -> SentimentRe
 
 def _loads_json_object(raw_content: str) -> dict:
     content = (raw_content or "").strip()
+    # Strip <think>...</think> chain-of-thought blocks (e.g. Qwen3 reasoning mode).
+    # Also handles truncated think blocks (no closing tag) caused by low max_tokens.
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    content = re.sub(r"<think>.*$", "", content, flags=re.DOTALL).strip()
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError:
