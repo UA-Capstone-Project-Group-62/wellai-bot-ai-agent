@@ -111,7 +111,7 @@ Return ONLY valid JSON, no other text."""
         response = self._llm.invoke(
             [
                 SystemMessage(
-                    content="You are a booking details extractor. Extract structured information from the LATEST USER MESSAGE ONLY. Do not use information from older messages."
+                    content="You are a booking details extractor. Extract structured information from the latest user message AND the conversation history. Use history to fill in missing fields not present in the latest message."
                 ),
                 HumanMessage(content=extraction_prompt),
             ]
@@ -469,9 +469,9 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                             f"  📞 {c['phone']}\n"
                             f"  ✉️ {c['email']}"
                         )
-                    ai_reply += "\n\n" + "\n\n".join(lines)
+                    ai_reply = "\n\n".join(lines)
                 else:
-                    ai_reply += "\n\nSorry, I couldn't retrieve the clinic list at this time. Please try again later."
+                    ai_reply = "Sorry, I couldn't retrieve the clinic list at this time. Please try again later."
                 logger.info("Listed {} clinics for user {}", len(clinics), user_id)
 
             elif detected_intent == "query_availability":
@@ -490,12 +490,12 @@ Which clinic is the user referring to? Return ONLY the clinic id exactly as list
                             f"*{date}*: " + ", ".join(times)
                             for date, times in sorted(by_date.items())
                         ]
-                        ai_reply += (
-                            f"\n\nAvailable slots at *{clinic_name}* (next 7 days):\n"
+                        ai_reply = (
+                            f"Available slots at *{clinic_name}* (next 7 days):\n"
                             + "\n".join(lines)
                         )
                     else:
-                        ai_reply += f"\n\nThere are no available slots at *{clinic_name}* in the next 7 days."
+                        ai_reply = f"There are no available slots at *{clinic_name}* in the next 7 days."
                     logger.info(
                         "Queried availability for clinic {} for user {}",
                         clinic_id,
