@@ -40,26 +40,58 @@ class AgentService(agent_pb2_grpc.AgentServiceServicer):
         """Convert various time formats to HH:MM format."""
         if not time_str:
             return "09:00"
-        
+
         time_str = time_str.strip().lower()
-        
+
         try:
-            # Try parsing with dateutil parser (handles "4pm", "4:30pm", "13:00", etc.)
-            parsed_time = date_parser.parse(time_str, default=datetime.now())
+            # Use midnight as default so only the time component from the string
+            # is used — avoids inheriting the current minute/second from datetime.now().
+            midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            parsed_time = date_parser.parse(time_str, default=midnight)
             return parsed_time.strftime("%H:%M")
         except Exception as e:
             logger.warning("Failed to parse time '{}': {}", time_str, e)
-            return "09:00"  # Default fallback
+            return "09:00"
 
-    def _extract_booking_details(self, conversation: str, user_message: str) -> dict:
+    def _fetch_clinics(self) -> list[dict]:
+        """Fetch available clinics from the scheduling service."""
+        if self.scheduling_client is None:
+            return []
+        try:
+            response = self.scheduling_client.list_clinics()
+            clinics = []
+            for c in response.clinics:
+                info = json.loads(c.clinic_info)
+                clinics.append({
+                    "id": c.clinic_id,
+                    "name": info.get("name", c.clinic_id),
+                    "address": info.get("address", ""),
+                    "phone": info.get("phone", ""),
+                    "email": info.get("email", ""),
+                })
+            return clinics
+        except Exception as e:
+            logger.warning("Failed to fetch clinics: {}", e)
+            return []
+
+    def _extract_booking_details(self, conversation: str, user_message: str, clinics: list[dict]) -> dict:
         """Extract booking details from conversation using LLM."""
+        clinic_list_text = "\n".join(f'- id: "{c["id"]}", name: "{c["name"]}"' for c in clinics)
+        default_clinic_instruction = (
+            f'if not mentioned, use the first clinic id: "{clinics[0]["id"]}"'
+            if clinics else "if not mentioned, use null"
+        )
+
         extraction_prompt = f"""Extract booking details from the LATEST USER MESSAGE. Return a JSON object with these fields (use null for missing values):
-- clinic_id: clinic identifier or name (e.g., "clinic_001" or "Central Clinic") - if not mentioned, use default "clinic_001"
+- clinic_id: must be one of the clinic IDs listed below ({default_clinic_instruction})
 - preferred_date: Relative date expression from latest message (e.g., "tomorrow", "today", "next week", or YYYY-MM-DD if specific date mentioned) - null if not mentioned
 - preferred_time: Time in HH:MM format (e.g., "13:00", "1pm") or null if not mentioned
 - user_name: patient name or null
 
-IMPORTANT: Extract ONLY from the latest user message, NOT from conversation history. Use relative date expressions as-is (e.g., "tomorrow" not a specific date).
+Available clinics:
+{clinic_list_text}
+
+IMPORTANT: Extract ONLY from the latest user message, NOT from conversation history. Use relative date expressions as-is (e.g., "tomorrow" not a specific date). The clinic_id must exactly match one of the IDs listed above.
 
 Conversation history:
 {conversation}
@@ -69,12 +101,6 @@ Latest message:
 
 Return ONLY valid JSON, no other text."""
 
-        if self._llm is None:
-            self._llm = ChatGroq(
-                model="llama-3.3-70b-versatile",
-                temperature=0.1,
-                max_tokens=500,
-            )
         response = self._llm.invoke([
             SystemMessage(content="You are a booking details extractor. Extract structured information from the LATEST USER MESSAGE ONLY. Do not use information from older messages."),
             HumanMessage(content=extraction_prompt),
@@ -84,12 +110,11 @@ Return ONLY valid JSON, no other text."""
             # Strip markdown code blocks if present
             content = response.content.strip()
             if content.startswith("```"):
-                # Remove markdown code block markers
                 content = re.sub(r"^```(?:json)?\s*", "", content)
                 content = re.sub(r"\s*```$", "", content)
-            
+
             details = json.loads(content.strip())
-            
+
             # Convert relative dates to ISO format
             if details.get("preferred_date"):
                 date_str = details["preferred_date"].lower().strip()
@@ -101,23 +126,65 @@ Return ONLY valid JSON, no other text."""
                     elif "next week" in date_str:
                         target_date = datetime.now() + timedelta(days=7)
                     else:
-                        # Try parsing as actual date
                         target_date = date_parser.parse(date_str)
-                    
+
                     details["preferred_date"] = target_date.strftime("%Y-%m-%d")
                 except Exception as e:
                     logger.warning("Failed to parse date '{}': {}", date_str, e)
                     details["preferred_date"] = None
-            
-            # Set default clinic_id if not provided
-            if not details.get("clinic_id"):
-                details["clinic_id"] = "clinic_001"
-            
+
+            # Validate clinic_id against the known list; fall back to first clinic
+            valid_ids = {c["id"] for c in clinics}
+            if not details.get("clinic_id") or details["clinic_id"] not in valid_ids:
+                details["clinic_id"] = clinics[0]["id"] if clinics else None
+
             logger.info("Extracted booking details: {}", details)
             return details
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             logger.warning("Failed to parse extraction response: {}", response.content)
             return {}
+
+    def _query_available_slots(self, clinic_id: str, target_date: str | None = None, days: int = 7) -> list[dict]:
+        """Query available time slots for a clinic.
+
+        Returns list of {"date": "YYYY-MM-DD", "time": "HH:MM"}.
+        If target_date is given, only slots on that date are returned.
+        """
+        if self.scheduling_client is None:
+            return []
+        try:
+            response = self.scheduling_client.query_available_slots(clinic_id, days=days)
+            slots = []
+            for slot in response.available_slots:
+                start_dt = slot.start_time.ToDatetime()
+                slot_date = start_dt.strftime("%Y-%m-%d")
+                if target_date is None or slot_date == target_date:
+                    slots.append({"date": slot_date, "time": start_dt.strftime("%H:%M")})
+            return slots
+        except Exception as e:
+            logger.warning("Failed to query available slots: {}", e)
+            return []
+
+    def _resolve_clinic_id(self, message: str, clinics: list[dict]) -> str | None:
+        """Use LLM to match a clinic name/reference in the message to a clinic ID."""
+        if not clinics:
+            return None
+        if len(clinics) == 1:
+            return clinics[0]["id"]
+        clinic_list = "\n".join(f'- id: "{c["id"]}", name: "{c["name"]}"' for c in clinics)
+        prompt = f"""Given this message: "{message}"
+
+And these available clinics:
+{clinic_list}
+
+Which clinic is the user referring to? Return ONLY the clinic id exactly as listed, or "unknown" if unclear."""
+        response = self._llm.invoke([
+            SystemMessage(content="You are a clinic name resolver. Return only the clinic id or 'unknown'."),
+            HumanMessage(content=prompt),
+        ])
+        resolved = response.content.strip().strip('"')
+        valid_ids = {c["id"] for c in clinics}
+        return resolved if resolved in valid_ids else (clinics[0]["id"] if clinics else None)
 
     def _attempt_schedule_appointment(
         self,
@@ -135,12 +202,13 @@ Return ONLY valid JSON, no other text."""
             }
 
         try:
-            # Parse ISO datetime string to Timestamp
-            dt = datetime.fromisoformat(start_time_str)
+            # Parse ISO datetime string and localise to the system timezone so
+            # Timestamp.FromDatetime (which expects an aware datetime) converts
+            # correctly instead of treating the naive value as UTC.
+            dt = datetime.fromisoformat(start_time_str).astimezone()
             timestamp = Timestamp()
             timestamp.FromDatetime(dt)
 
-            # Calculate end time (assume 1 hour appointment)
             end_dt = dt + timedelta(hours=1)
             end_timestamp = Timestamp()
             end_timestamp.FromDatetime(end_dt)
@@ -360,7 +428,41 @@ Return ONLY valid JSON, no other text."""
 
         # --- Step 2: Handle scheduling intents ---
         try:
-            if detected_intent in ["book_app", "cancel_app", "reschedule_app"]:
+            if detected_intent == "list_clinics":
+                clinics = self._fetch_clinics()
+                if clinics:
+                    lines = []
+                    for c in clinics:
+                        lines.append(
+                            f"🏥 *{c['name']}*\n"
+                            f"  📍 {c['address']}\n"
+                            f"  📞 {c['phone']}\n"
+                            f"  ✉️ {c['email']}"
+                        )
+                    ai_reply += "\n\n" + "\n\n".join(lines)
+                else:
+                    ai_reply += "\n\nSorry, I couldn't retrieve the clinic list at this time. Please try again later."
+                logger.info("Listed {} clinics for user {}", len(clinics), user_id)
+
+            elif detected_intent == "query_availability":
+                clinics = self._fetch_clinics()
+                clinic_id = self._resolve_clinic_id(content, clinics)
+                if clinic_id:
+                    available = self._query_available_slots(clinic_id, days=7)
+                    clinic_name = next((c["name"] for c in clinics if c["id"] == clinic_id), clinic_id)
+                    if available:
+                        by_date: dict[str, list[str]] = {}
+                        for s in available:
+                            by_date.setdefault(s["date"], []).append(s["time"])
+                        lines = [f"*{date}*: " + ", ".join(times) for date, times in sorted(by_date.items())]
+                        ai_reply += f"\n\nAvailable slots at *{clinic_name}* (next 7 days):\n" + "\n".join(lines)
+                    else:
+                        ai_reply += f"\n\nThere are no available slots at *{clinic_name}* in the next 7 days."
+                    logger.info("Queried availability for clinic {} for user {}", clinic_id, user_id)
+                else:
+                    ai_reply += "\n\nI couldn't determine which clinic you meant. Please specify a clinic name."
+
+            elif detected_intent in ["book_app", "cancel_app", "reschedule_app"]:
                 if self.scheduling_client is None:
                     logger.warning(
                         "Scheduling intent detected but scheduling client is not configured. user_id={}, intent={}",
@@ -370,13 +472,20 @@ Return ONLY valid JSON, no other text."""
                     return self._send_reply(user_id, ai_reply, context)
 
                 full_conversation = history_text + f"\nUser: {content}"
+                clinics = self._fetch_clinics()
                 if detected_intent == "book_app":
-                    # Try to extract booking details and schedule
-                    details = self._extract_booking_details(full_conversation, content)
-                    if details.get("preferred_date"):
-                        # Attempt scheduling with extracted details
-                        # Parse time to HH:MM format
-                        time_str = self._parse_time_to_hhmm(details.get('preferred_time'))
+                    details = self._extract_booking_details(full_conversation, content, clinics)
+                    if details.get("preferred_date") and not details.get("preferred_time"):
+                        # Date known but no time — show available slots so user can pick
+                        available = self._query_available_slots(details["clinic_id"], target_date=details["preferred_date"])
+                        if available:
+                            slots_text = "\n".join(f"• {s['time']}" for s in available)
+                            ai_reply += f"\n\nHere are the available slots on {details['preferred_date']}:\n{slots_text}\n\nWhich time would you prefer?"
+                        else:
+                            ai_reply += f"\n\nUnfortunately there are no available slots on {details['preferred_date']}. Would you like to try a different date?"
+                        logger.info("Showed available slots for user {} on {}", user_id, details["preferred_date"])
+                    elif details.get("preferred_date") and details.get("preferred_time"):
+                        time_str = self._parse_time_to_hhmm(details["preferred_time"])
                         datetime_str = f"{details['preferred_date']}T{time_str}"
                         schedule_result = self._attempt_schedule_appointment(
                             user_id=user_id,
@@ -384,19 +493,12 @@ Return ONLY valid JSON, no other text."""
                             clinic_id=details["clinic_id"],
                             start_time_str=datetime_str,
                         )
-
                         if schedule_result["success"]:
-                            # Append success message to AI reply
                             ai_reply += f"\n\n✅ Appointment confirmed! {schedule_result['message']}"
                             logger.info("Appointment scheduled successfully for user {}", user_id)
                         else:
-                            # Append error and continue conversation
                             ai_reply += f"\n\n⚠️ Could not complete booking: {schedule_result['message']}. Please try again or contact us directly."
-                            logger.warning(
-                                "Scheduling failed for user {}: {}",
-                                user_id,
-                                schedule_result["message"],
-                            )
+                            logger.warning("Scheduling failed for user {}: {}", user_id, schedule_result["message"])
                     else:
                         logger.info("Incomplete booking details. Waiting for more information from user.")
 
@@ -415,9 +517,17 @@ Return ONLY valid JSON, no other text."""
                         )
 
                 elif detected_intent == "reschedule_app":
-                    # For reschedule, extract new details and attempt to update
-                    details = self._extract_booking_details(full_conversation, content)
-                    if details.get("clinic_id") and details.get("preferred_date"):
+                    details = self._extract_booking_details(full_conversation, content, clinics)
+                    if details.get("clinic_id") and details.get("preferred_date") and not details.get("preferred_time"):
+                        # Date known but no time — show available slots
+                        available = self._query_available_slots(details["clinic_id"], target_date=details["preferred_date"])
+                        if available:
+                            slots_text = "\n".join(f"• {s['time']}" for s in available)
+                            ai_reply += f"\n\nHere are the available slots on {details['preferred_date']}:\n{slots_text}\n\nWhich time would you prefer for rescheduling?"
+                        else:
+                            ai_reply += f"\n\nUnfortunately there are no available slots on {details['preferred_date']}. Would you like to try a different date?"
+                        logger.info("Showed available slots for reschedule user {} on {}", user_id, details["preferred_date"])
+                    elif details.get("clinic_id") and details.get("preferred_date") and details.get("preferred_time"):
                         # First cancel old appointment, then create new one
                         cancel_result = self._cancel_appointment(user_id)
                         if cancel_result["success"]:

@@ -191,7 +191,7 @@ class LanguageMonitor:
     def _get_llm(self):
         if self._llm_client is None:
             self._llm_client = ChatGroq(
-                model="llama-3.3-70b-versatile",
+                model="qwen/qwen3-32b",
                 temperature=0,
                 max_tokens=80,
             )

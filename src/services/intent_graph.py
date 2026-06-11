@@ -51,6 +51,8 @@ POSSIBLE_INTENTS = [
     "book_app",
     "cancel_app",
     "reschedule_app",
+    "list_clinics",
+    "query_availability",
     "ask_question",
     "language_support",
     "unrelated_to_your_job",
@@ -194,6 +196,8 @@ IMPORTANT RULES:
 - "book_app" = User explicitly wants to CREATE/MAKE a new appointment (e.g., "I want to book", "I need an appointment", "Saya nak buat temu janji", "我想预约", "Saya mahu temujanji")
 - "cancel_app" = User wants to CANCEL an existing appointment (e.g., "I want to cancel", "Batal temu janji", "取消预约")
 - "reschedule_app" = User wants to CHANGE/MOVE an existing appointment time/date (e.g., "Can I reschedule", "Boleh saya tukar tarikh temu janji", "我可以改预约吗", "tukar jadual", "ubah masa")
+- "list_clinics" = User wants to see the list of available clinics or get info/details about a specific clinic (e.g., "What clinics are available?", "List all clinics", "Tell me about clinic 1", "What's the address of the downtown clinic", "Klinik apa yang ada", "有哪些诊所")
+- "query_availability" = User wants to check available time slots or opening times at a specific clinic (e.g., "What's the availability at downtown clinic?", "When can I book at clinic 1?", "Are there slots tomorrow at midtown?", "Bila ada slot kosong", "什么时候有空档")
 - "ask_question" = User is asking for INFORMATION about the clinic, hours, location, fees, services, etc. (e.g., "What are your hours?", "Where is your clinic?", "How much?", "Berapa yuran", "营业时间", "Di mana klinik", "berapa harga")
 - "language_support" = User asks what languages the AI assistant, clinic, staff, service, or bot can speak, understand, communicate in, or support. This includes typos, indirect wording, and follow-up questions about language proficiency/support.
 - "unrelated_to_your_job" = Everything else
@@ -215,6 +219,13 @@ EXAMPLES:
 - "你们诊所在哪里？" -> ask_question
 - "看诊费用是多少？" -> ask_question
 - "Berapa harga konsultasi?" -> ask_question
+- "What's the availability at downtown clinic?" -> query_availability
+- "When can I book at clinic 1?" -> query_availability
+- "Are there any slots this week?" -> query_availability
+- "Can you list all clinics?" -> list_clinics
+- "What clinics can I book?" -> list_clinics
+- "Tell me about clinic 1" -> list_clinics
+- "What's the address of the downtown clinic?" -> list_clinics
 - "What languages do you know?" -> language_support
 - "What do you know how to speak?" -> language_support
 - "What languages are supported?" -> language_support
@@ -353,6 +364,42 @@ Respond as a helpful booking assistant. Acknowledge any details they have provid
     return {"messages": [response]}
 
 
+def query_availability_node(state: AgentState):
+    messages = state["messages"]
+    user_message = messages[-1].content
+    lang_instr = _language_instruction(user_message)
+
+    system_content = f"""{SYSTEM_PROMPT}
+
+The user is asking about available appointment slots. Availability details will be appended to your reply by the system. Write a brief, friendly introduction (1 sentence) saying you'll check the availability now.
+
+{lang_instr}"""
+
+    response = _invoke_with_retry([
+        SystemMessage(content=system_content),
+        HumanMessage(content=user_message),
+    ])
+    return {"messages": [response]}
+
+
+def list_clinics_node(state: AgentState):
+    messages = state["messages"]
+    user_message = messages[-1].content
+    lang_instr = _language_instruction(user_message)
+
+    system_content = f"""{SYSTEM_PROMPT}
+
+The user is asking about available clinics. Clinic details will be appended to your reply by the system. Write a brief, friendly introduction (1 sentence) saying you'll share the clinic information now.
+
+{lang_instr}"""
+
+    response = _invoke_with_retry([
+        SystemMessage(content=system_content),
+        HumanMessage(content=user_message),
+    ])
+    return {"messages": [response]}
+
+
 def language_support_node(state: AgentState):
     logger.info("Language support response returned")
     return {"messages": [AIMessage(content=LANGUAGE_SUPPORT_RESPONSE)]}
@@ -414,6 +461,10 @@ def _route(state: AgentState):
         return "cancel"
     elif intent == "reschedule_app":
         return "reschedule"
+    elif intent == "list_clinics":
+        return "list_clinics"
+    elif intent == "query_availability":
+        return "query_availability"
     elif intent == "language_support":
         return "language_support"
     elif intent == "ask_question":
@@ -431,6 +482,8 @@ _workflow.add_node("agent", agent_node)
 _workflow.add_node("book", book_node)
 _workflow.add_node("cancel", cancel_node)
 _workflow.add_node("reschedule", reschedule_node)
+_workflow.add_node("list_clinics", list_clinics_node)
+_workflow.add_node("query_availability", query_availability_node)
 _workflow.add_node("language_support", language_support_node)
 _workflow.add_node("question", question_node)
 
@@ -442,6 +495,8 @@ _workflow.add_conditional_edges(
         "book": "book",
         "cancel": "cancel",
         "reschedule": "reschedule",
+        "list_clinics": "list_clinics",
+        "query_availability": "query_availability",
         "language_support": "language_support",
         "question": "question",
         "agent": "agent",
@@ -450,6 +505,8 @@ _workflow.add_conditional_edges(
 _workflow.add_edge("book", END)
 _workflow.add_edge("cancel", END)
 _workflow.add_edge("reschedule", END)
+_workflow.add_edge("list_clinics", END)
+_workflow.add_edge("query_availability", END)
 _workflow.add_edge("language_support", END)
 _workflow.add_edge("question", END)
 _workflow.add_edge("agent", END)

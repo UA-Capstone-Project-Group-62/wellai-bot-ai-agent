@@ -70,16 +70,17 @@ class SchedulingClient:
             raise
 
     def query_available_slots(
-        self, clinic_id: str, timeout: float = _DEFAULT_TIMEOUT
+        self, clinic_id: str, days: int = 7, timeout: float = _DEFAULT_TIMEOUT
     ):
         """Query available time slots for a clinic."""
         logger.info(
-            "Querying available slots. destination={}, clinic_id={}",
+            "Querying available slots. destination={}, clinic_id={}, days={}",
             self._target_addr,
             clinic_id,
+            days,
         )
         try:
-            request = scheduling_pb2.QueryRequest(clinic_id=clinic_id)
+            request = scheduling_pb2.QueryRequest(clinic_id=clinic_id, days=days)
             return self._stub.Query(request, timeout=timeout)
         except grpc.RpcError as error:
             logger.error(
